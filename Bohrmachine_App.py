@@ -32,27 +32,30 @@ def create_complex_bn(noise_v, noise_c, noise_t):
         ('Zustand', 'Vibration'), ('Zustand', 'Strom'),
         ('Zustand', 'Temperatur'), ('Zustand', 'Akustik')
     ])
-    
     cpd_a = TabularCPD('Alter', 3, [[0.7], [0.2], [0.1]]) 
     cpd_m = TabularCPD('Material', 2, [[0.6], [0.4]])    
-    
     cpd_z = TabularCPD('Zustand', 3, [
             [0.98, 0.85, 0.60, 0.30, 0.05, 0.01], 
             [0.01, 0.10, 0.30, 0.40, 0.60, 0.20], 
             [0.01, 0.05, 0.10, 0.30, 0.35, 0.79]], 
             evidence=['Alter', 'Material'], evidence_card=[3, 2])
-    
     cpd_v = TabularCPD('Vibration', 2, [[1-noise_v, 0.3, 0.05], [noise_v, 0.7, 0.95]], evidence=['Zustand'], evidence_card=[3])
     cpd_s = TabularCPD('Strom', 2, [[0.95, 0.2, 0.4], [0.05, 0.8, 0.6]], evidence=['Zustand'], evidence_card=[3])
     cpd_t = TabularCPD('Temperatur', 2, [[0.99, 0.1, 0.3], [0.01, 0.9, 0.7]], evidence=['Zustand'], evidence_card=[3])
     cpd_ak = TabularCPD('Akustik', 2, [[0.90, 0.4, 0.5], [0.10, 0.6, 0.5]], evidence=['Zustand'], evidence_card=[3])
-    
     model.add_cpds(cpd_a, cpd_m, cpd_z, cpd_v, cpd_s, cpd_t, cpd_ak)
     return model
 
 # --- 3. INITIALISIERUNG ---
+# Einheitliche Benennung aller Keys
 if 'history' not in st.session_state:
-    st.session_state.update({'count': 0, 'history': [], 'is_run': False, 'fail_next': False, 'emergency_stop': False})
+    st.session_state.update({
+        'count': 0, 
+        'history': [], 
+        'is_run': False, 
+        'manual_fail': False, 
+        'emergency_stop': False
+    })
 
 with st.sidebar:
     st.header("⚙️ Sensor-Kalibrierung")
@@ -61,7 +64,7 @@ with st.sidebar:
     n_t = st.slider("Thermische Trägheit", 0.0, 0.4, 0.01)
     st.divider()
     speed = st.select_slider("Prozess-Takt", [0.5, 0.2, 0.1, 0.01], 0.1)
-    auto_stop = st.checkbox("Automatischer Not-Halt bei >90%", value=True)
+    auto_stop_active = st.checkbox("Automatischer Not-Halt bei >90%", value=True)
 
 bn = create_complex_bn(n_v, n_c, n_t)
 inf = VariableElimination(bn)
@@ -75,10 +78,11 @@ with col_btn1:
         st.session_state.emergency_stop = False
 with col_btn2:
     if st.button("🧹 CACHE CLEAR", use_container_width=True):
-        st.session_state.update({'count':0, 'history':[], 'is_run':False, 'emergency_stop': False})
+        st.session_state.update({'count':0, 'history':[], 'is_run':False, 'emergency_stop': False, 'manual_fail': False})
         st.rerun()
 with col_btn3:
-    if st.button("⚠️ BRUCH ERZWINGEN", type="primary", use_container_width=True): st.session_state.fail_next = True
+    if st.button("⚠️ BRUCH ERZWINGEN", type="primary", use_container_width=True): 
+        st.session_state.manual_fail = True
 
 # --- 5. SIMULATION & LOGIK ---
 if st.session_state.is_run:
@@ -86,8 +90,13 @@ if st.session_state.is_run:
     age = min(2, st.session_state.count // 50)
     mat = 1 if np.random.random() < 0.3 else 0 
     
-    true_z = 2 if st.session_state.manual_fail else (1 if (age >= 1 and np.random.random() > 0.8) else 0)
-    st.session_state.manual_fail = False
+    # Kausale Simulation: Nutzt jetzt korrekt manual_fail
+    if st.session_state.manual_fail:
+        true_z = 2
+        st.session_state.manual_fail = False
+    else:
+        # Natürlicher Verschleiß-Zufall
+        true_z = 1 if (age >= 1 and np.random.random() > 0.8) else 0
     
     v_amp = np.random.normal(loc=(80 if true_z == 2 else 20), scale=10) 
     t_val = np.random.normal(loc=(70 if true_z == 1 else 30), scale=5)  
@@ -103,12 +112,13 @@ if st.session_state.is_run:
     res = inf.query(['Zustand'], evidence=ev).values
     st.session_state.history.append({'t': st.session_state.count, 'Intakt': res[0], 'Stumpf': res[1], 'Bruch': res[2], 'v_amp': v_amp, 'temp': t_val})
     
-    # AUTO-STOP LOGIK
-    if auto_stop and res[2] > 0.9:
+    if auto_stop_active and res[2] > 0.9:
         st.session_state.is_run = False
         st.session_state.emergency_stop = True
 else:
-    ev, res = None, [1, 0, 0]
+    # Default Werte wenn Simulation steht
+    res = [1, 0, 0]
+    ev = None
 
 # --- 6. VISUALISIERUNG ---
 if st.session_state.emergency_stop:
@@ -119,7 +129,6 @@ col_sensors, col_brain = st.columns([1, 2])
 
 with col_sensors:
     st.subheader("📟 Sensor-Telemetrie")
-    
     last_v = st.session_state.history[-1]['v_amp'] if st.session_state.history else 0
     last_t = st.session_state.history[-1]['temp'] if st.session_state.history else 0
     
@@ -136,8 +145,10 @@ with col_sensors:
     </div>""", unsafe_allow_html=True)
     
     c_s1, c_s2 = st.columns(2)
-    c_s1.checkbox("Akustik-Emi. (Kreischen)", value=bool(ev['Akustik'] if ev else 0), disabled=True)
-    c_s2.checkbox("Strom-Peak", value=bool(ev['Strom'] if ev else 0), disabled=True)
+    akustik_val = bool(ev['Akustik'] if ev else 0)
+    strom_val = bool(ev['Strom'] if ev else 0)
+    c_s1.checkbox("Akustik (Kreischen)", value=akustik_val, disabled=True)
+    c_s2.checkbox("Strom-Peak", value=strom_val, disabled=True)
 
 with col_brain:
     st.subheader("🧠 Probabilistisches Gehirn")
@@ -158,9 +169,9 @@ st.write("---")
 st.subheader("🔬 Kausale Attribution (Digital Twin Analysis)")
 if ev:
     st.markdown('<div class="logic-card">', unsafe_allow_html=True)
-    if ev['Vibration']: st.write("⚠️ Kritische **Vibrationsamplitude** erkannt – Strukturschaden wahrscheinlich.")
-    if ev['Temperatur']: st.write("🔥 **Thermische Last** erhöht – Indiz für hohe Reibung/Verschleiß.")
-    if ev['Akustik']: st.write("🔉 **Akustik-Sensor** meldet kreischende Frequenzen.")
+    if ev['Vibration']: st.write("⚠️ Kritische **Vibrationsamplitude** erkannt.")
+    if ev['Temperatur']: st.write("🔥 **Thermische Last** erhöht (Reibung).")
+    if ev['Akustik']: st.write("🔉 **Akustik-Sensor** meldet Unregelmäßigkeiten.")
     if not any([ev['Vibration'], ev['Temperatur'], ev['Akustik']]): st.write("✅ Alle Messwerte nominal.")
     st.markdown('</div>', unsafe_allow_html=True)
 
