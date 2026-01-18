@@ -8,65 +8,67 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 
-# --- 1. SETUP ---
+# --- 1. SETUP & DESIGN (Wiederhergestellt auf v21.7) ---
 st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.8", page_icon="⚙️")
 
-# --- 2. KI-ENGINE (KORRIGIERTE CPT-LOGIK) ---
+st.markdown("""
+    <style>
+    .stApp { background-color: #05070a; color: #e1e4e8; }
+    .glass-card {
+        background: rgba(23, 28, 36, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 15px; padding: 20px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(4px); margin-bottom: 15px;
+    }
+    .predictive-card {
+        background: linear-gradient(135deg, rgba(31, 111, 235, 0.2) 0%, rgba(5, 7, 10, 0.8) 100%);
+        border: 2px solid #58a6ff; border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px;
+    }
+    .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
+    .val-main { font-family: 'Inter', sans-serif; font-size: 2.8rem; font-weight: 800; margin: 5px 0; }
+    .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; text-shadow: 0 0 20px rgba(227, 179, 65, 0.4); }
+    .blue-glow { color: #58a6ff; text-shadow: 0 0 15px rgba(88, 166, 255, 0.5); }
+    .red-glow { color: #f85149; text-shadow: 0 0 15px rgba(248, 81, 73, 0.5); }
+    .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; height: 350px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. KI-ENGINE (Detaillierte CPT-Logik für 24 Kombinationen) ---
 @st.cache_resource
 def get_engine():
-    # Netzwerk-Struktur
-    model = DiscreteBayesianNetwork([
-        ('Age', 'State'), ('Load', 'State'), 
-        ('Therm', 'State'), ('Cool', 'State')
-    ])
+    model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
     
-    # Eltern-CPDs (Prior-Wahrscheinlichkeiten)
+    # Prior CPDs
     cpd_age = TabularCPD('Age', 3, [[0.33], [0.33], [0.34]])
     cpd_load = TabularCPD('Load', 2, [[0.8], [0.2]])
     cpd_therm = TabularCPD('Therm', 2, [[0.9], [0.1]])
     cpd_cool = TabularCPD('Cool', 2, [[0.95], [0.05]])
     
-    # KORREKTUR: Systematische Generierung der 24 Kombinationen für 'State'
-    # Zustand-Klassen: [Gut, Verschleiß, Kritisch]
+    # Systematische Generierung der 24 Merkmalskombinationen
     z_matrix = []
-    
     for age in range(3):        # 0:Neu, 1:Mittel, 2:Alt
         for load in range(2):    # 0:Normal, 1:Hoch
             for therm in range(2):# 0:Normal, 1:Hoch
                 for cool in range(2): # 0:Aktiv, 1:Inaktiv
-                    
-                    # Basis-Score für Risiko (höher = schlechter)
-                    # Gewichtung: Alter (3 Pkt), Last (4 Pkt), Thermik (5 Pkt), Kühlung (6 Pkt)
+                    # Risiko-Score Gewichtung
                     score = (age * 3) + (load * 4) + (therm * 5) + (cool * 6)
-                    
-                    # Logik zur Verteilung der Wahrscheinlichkeiten
-                    if score <= 2:
-                        p_gut, p_verschl, p_krit = 0.98, 0.01, 0.01
-                    elif score <= 6:
-                        p_gut, p_verschl, p_krit = 0.70, 0.25, 0.05
-                    elif score <= 10:
-                        p_gut, p_verschl, p_krit = 0.30, 0.40, 0.30
-                    elif score <= 14:
-                        p_gut, p_verschl, p_krit = 0.10, 0.30, 0.60
-                    else:
-                        p_gut, p_verschl, p_krit = 0.01, 0.04, 0.95
-                    
-                    z_matrix.append([p_gut, p_verschl, p_krit])
+                    # Mapping auf [Gut, Verschlissen, Kritisch]
+                    if score <= 2:   v = [0.98, 0.01, 0.01]
+                    elif score <= 6: v = [0.70, 0.25, 0.05]
+                    elif score <= 10:v = [0.30, 0.40, 0.30]
+                    elif score <= 14:v = [0.10, 0.30, 0.60]
+                    else:            v = [0.01, 0.04, 0.95]
+                    z_matrix.append(v)
     
-    # Hinzufügen der CPT zum Modell
-    # Die Matrix muss transponiert werden (.T), um das pgmpy-Format (States x Evidenz-Kombinationen) zu erfüllen
     cpd_state = TabularCPD(
-        variable='State', 
-        variable_card=3, 
-        values=np.array(z_matrix).T,
-        evidence=['Age', 'Load', 'Therm', 'Cool'],
-        evidence_card=[3, 2, 2, 2]
+        variable='State', variable_card=3, values=np.array(z_matrix).T,
+        evidence=['Age', 'Load', 'Therm', 'Cool'], evidence_card=[3, 2, 2, 2]
     )
-    
     model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state)
     return VariableElimination(model)
 
-# --- 3. INITIALISIERUNG & UI ---
+# --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {
         'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 
@@ -82,70 +84,83 @@ MATERIALIEN = {
     "Inconel (Superlegierung)": {"kc1.1": 3400, "mc": 0.26, "wear_rate": 2.5, "temp_crit": 850}
 }
 
-# --- SEITENLEISTE ---
+# --- 4. SIDEBAR (Eingabe) ---
 with st.sidebar:
-    st.header("⚙️ Parameter")
-    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
+    st.header("⚙️ Maschinen-Parameter")
+    mat_name = st.selectbox("Werkstoff wählen", list(MATERIALIEN.keys()))
     mat = MATERIALIEN[mat_name]
     vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160)
     f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18)
     d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
-    cooling = st.toggle("Kühlschmierung", value=True)
+    cooling = st.toggle("Kühlschmierung aktiv", value=True)
     st.divider()
-    cycle_step = st.number_input("Schrittweite", min_value=1, max_value=50, value=1)
+    st.subheader("⏱️ Simulations-Steuerung")
+    cycle_step = st.number_input("Schrittweite (Zyklen pro Sprung)", min_value=1, max_value=50, value=1)
     sim_speed = st.select_slider("Verzögerung (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
+    st.divider()
+    sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
 
-# --- 4. SIMULATIONS-SCHLEIFE ---
+# --- 5. LOGIK (Update) ---
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
     
-    # Physik
+    # Physik-Berechnung
     fc = mat['kc1.1'] * (f** (1-mat['mc'])) * (d/2)
     mc_raw = (fc * d) / 2000 
     s['wear'] += ((mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 400)) * cycle_step
-    
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.15
-    
-    # KI-Inferenz
-    engine = get_engine()
-    
-    # Diskretisierung (Grenzwerte)
+    amp = ((0.005 + (s['wear'] * 0.002)) * 10) + s['seed'].normal(0, 0.01)
+
+    # KI-Inferenz (Kategoriales Mapping)
     age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
-    load_cat = 1 if mc_raw > (d * 2.2) else 0
+    load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
     therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
     cool_cat = 0 if cooling else 1
+
+    engine = get_engine()
+    risk = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
     
-    risk_query = engine.query(['State'], evidence={
-        'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat
-    })
-    risk = risk_query.values[2] # Wahrscheinlichkeit für 'Kritisch'
-    
-    if risk > 0.98 or s['wear'] > 100: 
-        s['broken'] = True; s['active'] = False
-    
-    s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'mc':mc_raw})
-    s['logs'].insert(0, f"ZYK {s['cycle']} | Risiko: {risk:.1%} | State-Evidenz: [A:{age_cat}, L:{load_cat}, T:{therm_cat}, C:{cool_cat}]")
+    if risk > 0.98 or s['wear'] > 100: s['broken'] = True; s['active'] = False
+    s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc_raw})
+    s['logs'].insert(0, f"ZYK {s['cycle']} (+{cycle_step}) | Risiko: {risk:.1%} | Evidenz: A:{age_cat} L:{load_cat} T:{therm_cat} C:{cool_cat}")
 
-# --- 5. UI AUSGABE ---
-st.title("KI-ZWILLING | PRÄZISIONS-ÜBERWACHUNG v21.8")
-c1, c2, c3 = st.columns(3)
-c1.metric("Zyklus", st.session_state.twin['cycle'])
-c2.metric("Temperatur", f"{st.session_state.twin['t_current']:.1f} °C")
-c3.metric("Verschleiß", f"{st.session_state.twin['wear']:.1f} %")
+# --- 6. DASHBOARD (Ausgabe) ---
+st.title("KI-ZWILLING | BOHRSYSTEM v21.8")
+col_metrics, col_main, col_logs = st.columns([1, 2, 1])
 
-if len(st.session_state.twin['history']) > 0:
-    df = pd.DataFrame(st.session_state.twin['history'])
-    fig = make_subplots(rows=2, cols=1)
-    fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, name="Bruchrisiko %", line=dict(color='red')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df['c'], y=df['mc'], name="Drehmoment [Nm]", line=dict(color='blue')), row=2, col=1)
-    st.plotly_chart(fig, use_container_width=True)
+with col_metrics:
+    st.markdown(f'<div class="glass-card"><span class="val-title">Zyklus</span><br><span class="val-main blue-glow">{st.session_state.twin["cycle"]}</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{st.session_state.twin["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
 
-st.text_area("Analyse-Protokoll", value="\n".join(st.session_state.twin['logs']), height=200)
+with col_main:
+    ttf = "---"
+    if len(st.session_state.twin['history']) > 3:
+        df_calc = pd.DataFrame(st.session_state.twin['history'])
+        z = np.polyfit(df_calc['c'], df_calc['w'], 1)
+        steigung = max(0.000001, z[0])
+        ttf = max(0, int((100 - st.session_state.twin['wear']) / steigung))
+    st.markdown(f'<div class="predictive-card"><span class="val-title">🔮 Predictive Maintenance TTF</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis Wartung</span></div>', unsafe_allow_html=True)
 
-if st.button("START / STOPP"): st.session_state.twin['active'] = not st.session_state.twin['active']
-if st.button("RESET"): 
+    if len(st.session_state.twin['history']) > 0:
+        df_p = pd.DataFrame(st.session_state.twin['history'])
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r']*100, fill='tozeroy', name="Risiko %", line=dict(color='#f85149')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['mc'], name="Md [Nm]", line=dict(color='#58a6ff')), row=2, col=1)
+        fig.update_layout(height=350, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0,r=0,t=0,b=0))
+        st.plotly_chart(fig, use_container_width=True)
+
+with col_logs:
+    st.markdown('<p class="val-title">Live-Analyse</p>', unsafe_allow_html=True)
+    log_txt = "".join([f"<div style='margin-bottom:6px; border-bottom:1px solid #30363d; color:#3fb950; font-family:monospace;'>{l}</div>" for l in st.session_state.twin['logs'][:50]])
+    st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
+
+st.divider()
+c1, c2 = st.columns(2)
+if c1.button("▶ START / STOPP", use_container_width=True): st.session_state.twin['active'] = not st.session_state.twin['active']
+if c2.button("🔄 RESET", use_container_width=True):
     st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
     st.rerun()
 
