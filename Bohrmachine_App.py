@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & INDUSTRIAL THEME ---
-st.set_page_config(layout="wide", page_title="AI Twin v20.7 Sensor Calibration", page_icon="📟")
+st.set_page_config(layout="wide", page_title="AI Twin v20.8 Education", page_icon="📖")
 
 st.markdown("""
     <style>
@@ -20,6 +20,7 @@ st.markdown("""
     }
     .main-val { font-family: 'JetBrains Mono', monospace; font-size: 2.2rem; color: #79c0ff; font-weight: 700; }
     .sub-label { font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+    .glossary-box { background-color: #1c2128; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-top: 20px; }
     .log-terminal { font-family: 'Consolas', monospace; font-size: 0.75rem; height: 350px; overflow-y: auto; background: #010409; padding: 10px; border: 1px solid #30363d; border-radius: 4px; }
     </style>
     """, unsafe_allow_html=True)
@@ -31,7 +32,7 @@ if 'twin' not in st.session_state:
         't_current': 22.0, 'seed': np.random.RandomState(42)
     }
 
-# --- 3. KI-KERN (BAYES) ---
+# --- 3. KI-KERN & PHYSIK ---
 MATERIALIEN = {
     "Stahl (42CrMo4)": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.2, "temp_crit": 550},
     "Edelstahl (1.4404)": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.4, "temp_crit": 650},
@@ -67,21 +68,22 @@ def get_engine():
     )
     return VariableElimination(model)
 
-# --- 4. SIDEBAR MIT SENSOR-EINSTELLUNGEN ---
+# --- 4. SIDEBAR - BEDIENUNG MIT ERKLÄRUNGEN ---
 with st.sidebar:
-    st.header("⚙️ Maschinensteuerung")
-    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
+    st.header("⚙️ Konfiguration")
+    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()), help="Bestimmt die spezifische Schnittkraft (kc1.1) und die thermische Belastbarkeit.")
     mat = MATERIALIEN[mat_name]
-    vc = st.slider("vc [m/min]", 20, 500, 160)
-    f = st.slider("f [mm/U]", 0.02, 1.0, 0.18)
-    d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
-    cooling = st.toggle("Kühlung aktiv", value=True)
+    
+    vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160, help="Die Geschwindigkeit, mit der die Schneide am Werkstück entlangfährt. Haupteinflussfaktor für Hitze.")
+    f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18, help="Weg des Bohrers pro Umdrehung. Bestimmt die Spandicke und die mechanische Last.")
+    d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0, help="Durchmesser des Werkzeugs. Beeinflusst das Drehmoment maßgeblich.")
+    
+    cooling = st.toggle("Kühlschmierung", value=True, help="Aktiviert die Wärmeabfuhr. Senkt das Risiko für thermisches Versagen.")
     
     st.divider()
-    st.header("📡 Sensorik-Kalibrierung")
-    # Sensitivitäts-Parameter
-    sens_vib = st.slider("Vibrations-Sensitivität", 0.1, 5.0, 1.0, help="Verstärkt das Vibrationssignal für die KI")
-    sens_load = st.slider("Last-Sensitivität", 0.1, 5.0, 1.0, help="Erhöht die Gewichtung mechanischer Kraftspitzen")
+    st.header("📡 Sensor-Empfindlichkeit")
+    sens_vib = st.slider("Vibrations-Sensitivität", 0.1, 5.0, 1.0, help="Verstärkungsfaktor für das Vibrationssignal. Höher = Frühere Warnung bei Rattern.")
+    sens_load = st.slider("Last-Sensitivität", 0.1, 5.0, 1.0, help="Gewichtung des Drehmoments in der KI-Logik.")
     
     sim_speed = st.select_slider("Abtastung (ms)", options=[100, 50, 10, 0], value=50)
 
@@ -90,25 +92,18 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += 1
     
-    # Physikalische Simulation
     fc = mat['kc1.1'] * (f** (1-mat['mc'])) * (d/2)
     mc_raw = (fc * d) / 2000
-    # Last-Sensitivität beeinflusst das empfundene Drehmoment der KI
-    mc_perceived = mc_raw * sens_load 
-    
     wear_inc = (mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 400)
     s['wear'] += wear_inc
     
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.15
     
-    # Vibration mit Sensitivitäts-Einfluss
     noise = s['seed'].normal(0, 0.001) * sens_vib
     amp = ((0.005 + (s['wear'] * 0.002)) * sens_vib) + noise
     
-    # KI-Inferenz (Bayes)
     engine = get_engine()
-    # Schwellenwerte für die Inferenz werden durch Sensitivität beeinflusst
     load_threshold = (d * 2.2) / sens_load
     
     risk = engine.query(['State'], evidence={
@@ -124,30 +119,40 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s['logs'].insert(0, f"CYC {s['cycle']:03d} | Risk: {risk:.1%} | Amp: {amp:.4f} | Md: {mc_raw:.1f}Nm")
 
 # --- 6. DASHBOARD ---
-st.title("Industrial Precision Twin v20.7: Sensor Calibration")
+st.title("Industrial Precision Twin v20.8 📖")
 
 col_metrics, col_graph, col_logs = st.columns([0.6, 1.8, 1.0])
 
 with col_metrics:
-    st.markdown(f'<div class="metric-card"><span class="sub-label">Zyklus</span><br><div class="main-val">{st.session_state.twin["cycle"]}</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="metric-card"><span class="sub-label">Temperatur</span><br><div class="main-val" style="color:#f85149">{st.session_state.twin["t_current"]:.1f}°C</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="metric-card"><span class="sub-label">Drehmoment (Ist)</span><br><div class="main-val" style="color:#58a6ff">{st.session_state.twin["history"][-1]["mc"] if st.session_state.twin["history"] else 0.0:.1f}Nm</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="metric-card"><span class="sub-label">Vibration (RMS)</span><br><div class="main-val" style="color:#3fb950">{st.session_state.twin["history"][-1]["amp"] if st.session_state.twin["history"] else 0.0:.4f}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" title="Anzahl der durchgeführten Bohrungen/Operationen."><span class="sub-label">Zyklus</span><br><div class="main-val">{st.session_state.twin["cycle"]}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" title="Aktuelle Temperatur an der Schneide. Kritisch ab materialabhängigem Temp-Limit."><span class="sub-label">Temperatur</span><br><div class="main-val" style="color:#f85149">{st.session_state.twin["t_current"]:.1f}°C</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" title="Drehmoment (Last) in Newtonmeter. Berechnet nach der Kienzle-Formel."><span class="sub-label">Drehmoment</span><br><div class="main-val" style="color:#58a6ff">{st.session_state.twin["history"][-1]["mc"] if st.session_state.twin["history"] else 0.0:.1f}Nm</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" title="RMS-Vibrationswert. Steigt bei Werkzeugstumpfung oder Instabilität."><span class="sub-label">Vibration (RMS)</span><br><div class="main-val" style="color:#3fb950">{st.session_state.twin["history"][-1]["amp"] if st.session_state.twin["history"] else 0.0:.4f}</div></div>', unsafe_allow_html=True)
+
+    # KLEINES GLOSSAR UNTER DEN METRIKEN
+    with st.container():
+        st.markdown("""
+        <div class="glossary-box">
+        <p style="color:#58a6ff; font-weight:bold; margin-bottom:5px;">Kurz-Glossar:</p>
+        <small><b>vc:</b> Schnittgeschwindigkeit. Treibt die Temperatur.<br>
+        <b>f:</b> Vorschub. Treibt die mechanische Kraft.<br>
+        <b>kc1.1:</b> Spez. Schnittkraft des Materials.<br>
+        <b>Bayes-Inferenz:</b> Wahrscheinlichkeits-Berechnung des Zustands.</small>
+        </div>
+        """, unsafe_allow_html=True)
 
 with col_graph:
     if st.session_state.twin['history']:
         df = pd.DataFrame(st.session_state.twin['history'])
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, subplot_titles=("KI-Bruchrisiko (%)", "Sensor-Telemetrie (Rohsignale)"))
-        
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, subplot_titles=("KI-Bruchrisiko (%)", "Sensor-Rohdaten (Last & Vibration)"))
         fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, fill='tozeroy', name="Bruchrisiko", line=dict(color='#f85149')), row=1, col=1)
         fig.add_trace(go.Scatter(x=df['c'], y=df['mc'], name="Last (Nm)", line=dict(color='#58a6ff')), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['c'], y=df['amp']*1000, name="Vibration (x1k)", line=dict(color='#3fb950')), row=2, col=1)
-        
-        fig.update_layout(height=550, template="plotly_dark", margin=dict(l=0,r=0,t=30,b=0), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        fig.add_trace(go.Scatter(x=df['c'], y=df['amp']*1000, name="Vibration", line=dict(color='#3fb950')), row=2, col=1)
+        fig.update_layout(height=550, template="plotly_dark", margin=dict(l=0,r=0,t=30,b=0), legend=dict(orientation="h", y=1.05, x=0.5, xanchor="center"))
         st.plotly_chart(fig, use_container_width=True)
 
 with col_logs:
-    st.markdown('<p class="sub-label">Kalibrierte Sensor Logs</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-label">KI- & Sensor-Protokoll</p>', unsafe_allow_html=True)
     log_content = "".join([f"<div>{l}</div>" for l in st.session_state.twin['logs'][:100]])
     st.markdown(f'<div class="log-terminal">{log_content}</div>', unsafe_allow_html=True)
 
