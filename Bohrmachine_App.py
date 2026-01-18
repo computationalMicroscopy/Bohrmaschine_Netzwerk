@@ -5,179 +5,186 @@ from pgmpy.models import DiscreteBayesianNetwork
 from pgmpy.factors.discrete import TabularCPD
 from pgmpy.inference import VariableElimination
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import time
 
-# --- 1. PRO-UI SETUP ---
-st.set_page_config(layout="wide", page_title="AI Precision Drilling Lab v13", page_icon="🔩")
+# --- 1. INDUSTRIAL THEME SETUP ---
+st.set_page_config(layout="wide", page_title="AI Precision Drilling Lab v14", page_icon="🔩")
 
 st.markdown("""
     <style>
-    .stApp { background-color: #0b0f14; color: #e0e0e0; }
-    .sensor-tile { background-color: #161b22; border-radius: 10px; padding: 20px; border: 1px solid #30363d; text-align: center; }
-    .metric-value { font-family: 'IBM Plex Mono', monospace; color: #58a6ff; font-size: 1.8rem; font-weight: bold; }
-    .log-container { height: 400px; overflow-y: scroll; background-color: #0d1117; border: 1px solid #30363d; padding: 10px; font-family: 'IBM Plex Mono'; font-size: 0.8rem; color: #8b949e; }
+    .stApp { background-color: #0d1117; color: #c9d1d9; }
+    .sensor-card { 
+        background-color: #161b22; border: 1px solid #30363d; 
+        border-radius: 12px; padding: 20px; text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    .metric-val { font-family: 'JetBrains Mono', monospace; font-size: 2.2rem; font-weight: 700; color: #58a6ff; }
+    .risk-high { color: #f85149 !important; }
+    .log-area { font-family: 'Consolas', monospace; font-size: 0.85rem; height: 450px; overflow-y: auto; background: #010409; padding: 10px; border: 1px solid #30363d; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DAS PERFEKTE MODELL (Realistische Wahrscheinlichkeiten) ---
+# --- 2. ADVANCED CAUSAL ENGINE ---
 @st.cache_resource
-def create_final_bn(n_v, n_t, n_s, bohrer_mat, werkst_mat):
+def build_ultra_bn(n_v, n_t, n_s):
+    # Zustand hängt ab von Verschleiß, Last (v_c/f) und Kühlung
     model = DiscreteBayesianNetwork([
-        ('Verschleiss', 'Zustand'), ('Kuehlung', 'Zustand'), ('Vorschub_Regler', 'Zustand'),
-        ('Zustand', 'Vibration'), ('Zustand', 'Temperatur'), ('Zustand', 'Vorschub_Ist')
+        ('Wear', 'Status'), ('Load', 'Status'), ('Cooling', 'Status'),
+        ('Status', 'Vib'), ('Status', 'Temp'), ('Status', 'Power')
     ])
     
-    # Priors (Die Basis-Zustände)
-    cpd_vschleiss = TabularCPD('Verschleiss', 3, [[0.33], [0.33], [0.34]])
-    cpd_k = TabularCPD('Kuehlung', 2, [[0.9], [0.1]]) 
-    cpd_vr = TabularCPD('Vorschub_Regler', 2, [[0.5], [0.5]])
-
-    # Zustand CPT (Bruch-Logik)
-    # 3 (Verschleiss) * 2 (Kühlung) * 2 (Vorschub) = 12 Spalten
-    # Materialeinfluss wird hier direkt in die Wahrscheinlichkeit gewebt
-    mat_risk = 1.5 if werkst_mat == "Titan" else (1.2 if werkst_mat == "Edelstahl" else 0.8)
+    # Priors
+    cpd_w = TabularCPD('Wear', 3, [[0.33], [0.33], [0.34]]) # Low, Med, High
+    cpd_l = TabularCPD('Load', 2, [[0.7], [0.3]])          # Normal, Overload
+    cpd_c = TabularCPD('Cooling', 2, [[0.95], [0.05]])     # OK, Fail
     
-    z_matrix = []
-    for v in range(3): # 0=Neu, 1=Stumpf, 2=Kritisch
-        for k in range(2): # 0=OK, 1=Ausfall
-            for vr in range(2): # 0=Low, 1=High
-                prob_bruch = (v * 0.25) + (k * 0.4) + (vr * 0.1)
-                prob_bruch = min(0.95, prob_bruch * mat_risk)
-                prob_stumpf = (v * 0.4) + (k * 0.2)
-                prob_stumpf = min(1.0 - prob_bruch, prob_stumpf)
-                prob_intakt = 1.0 - prob_bruch - prob_stumpf
-                z_matrix.append([prob_intakt, prob_stumpf, prob_bruch])
-
-    cpd_z = TabularCPD('Zustand', 3, np.array(z_matrix).T, 
-                       evidence=['Verschleiss', 'Kuehlung', 'Vorschub_Regler'], 
-                       evidence_card=[3, 2, 2])
+    # Status CPT (Logic: P(Status|Wear, Load, Cooling))
+    # Status: 0=Safe, 1=Warning, 2=Critical/Broken
+    s_matrix = []
+    for w in range(3):
+        for l in range(2):
+            for c in range(2):
+                risk_score = (w * 2.5) + (l * 4.0) + (c * 6.0)
+                p2 = min(0.98, (risk_score**2.2) / 200.0) # Exponentielles Bruchrisiko
+                p1 = min(1.0 - p2, risk_score / 15.0)
+                p0 = 1.0 - p1 - p2
+                s_matrix.append([p0, p1, p2])
+                
+    cpd_status = TabularCPD('Status', 3, np.array(s_matrix).T, 
+                            evidence=['Wear', 'Load', 'Cooling'], evidence_card=[3, 2, 2])
     
-    # Sensoren (Sehr sensitiv auf Zustand)
-    cpd_vib = TabularCPD('Vibration', 2, [[0.9, 0.4, 0.05], [0.1, 0.6, 0.95]], evidence=['Zustand'], evidence_card=[3])
-    cpd_temp = TabularCPD('Temperatur', 2, [[0.95, 0.3, 0.02], [0.05, 0.7, 0.98]], evidence=['Zustand'], evidence_card=[3])
-    cpd_vi = TabularCPD('Vorschub_Ist', 2, [[0.99, 0.5, 0.01], [0.01, 0.5, 0.99]], evidence=['Zustand'], evidence_card=[3])
+    # Sensors (High sensitivity)
+    cpd_vib = TabularCPD('Vib', 2, [[1-n_v, 0.4, 0.05], [n_v, 0.6, 0.95]], evidence=['Status'], evidence_card=[3])
+    cpd_temp = TabularCPD('Temp', 2, [[0.98, 0.3, 0.01], [0.02, 0.7, 0.99]], evidence=['Status'], evidence_card=[3])
+    cpd_pwr = TabularCPD('Power', 2, [[0.9, 0.2, 0.1], [0.1, 0.8, 0.9]], evidence=['Status'], evidence_card=[3])
     
-    model.add_cpds(cpd_vschleiss, cpd_k, cpd_vr, cpd_z, cpd_vib, cpd_temp, cpd_vi)
+    model.add_cpds(cpd_w, cpd_l, cpd_c, cpd_status, cpd_vib, cpd_temp, cpd_pwr)
     return model
 
 # --- 3. SESSION STATE ---
-if 'history' not in st.session_state:
-    st.session_state.update({
-        'count': 0, 'history': [], 'is_run': False, 'logs': [], 
-        'cum_wear': 0.0, 'has_broken': False, 'manual_fail': False
-    })
+if 'state' not in st.session_state:
+    st.session_state.state = {
+        'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 
+        'active': False, 'broken': False, 'seed': np.random.RandomState(42)
+    }
 
-# --- 4. SIDEBAR (Alle Regler) ---
+# --- 4. CONTROL INTERFACE ---
 with st.sidebar:
-    st.header("🛠️ Maschinen-Konfiguration")
-    b_mat = st.selectbox("Werkzeug-Typ", ["HSS-Bohrer", "VHM-Bohrer (Hartmetall)"])
-    w_mat = st.selectbox("Material", ["Alu", "Edelstahl", "Titan"])
+    st.image("https://img.icons8.com/fluency/96/automation.png", width=80)
+    st.title("Pro-Terminal")
     
-    st.divider()
-    st.subheader("Prozess-Parameter")
-    v_cut = st.slider("v_c (Schnittgeschwindigkeit)", 20, 250, 80)
-    f_in = st.slider("f (Vorschub mm/U)", 0.05, 0.8, 0.15)
+    with st.expander("Machine Configuration", expanded=True):
+        tool = st.selectbox("Tool Type", ["HSS Co5", "VHM TiAlN Coating"])
+        mat = st.selectbox("Workpiece", ["Alu-Cast", "Stainless 1.4301", "Titanium Gr. 5"])
+        vc = st.slider("Cutting Speed vc [m/min]", 10, 300, 120)
+        f = st.slider("Feed rate f [mm/rev]", 0.02, 0.6, 0.12)
     
-    st.divider()
-    with st.expander("Sensor-Feineinstellung"):
-        n_v = st.slider("Vibrations-Rauschen", 0.0, 1.0, 0.1)
-        instability = st.slider("Instabile Aufspannung", 0.0, 1.0, 0.0)
+    with st.expander("Environmental Noise"):
+        n_vib = st.slider("Vibration Noise", 0.0, 1.0, 0.15)
+        n_temp = st.slider("Thermal Noise", 0.0, 1.0, 0.05)
+        instability = st.slider("Fixture Instability", 0.0, 1.0, 0.1)
     
-    k_fail = st.toggle("🚨 Kühlmittelausfall simulieren")
-    st_speed = st.select_slider("Sim-Geschwindigkeit", [1000, 500, 100, 10], 100)
+    cooling = st.toggle("Coolant Active", value=True)
+    speed = st.select_slider("Clock Speed [ms]", [500, 200, 100, 50], 100)
 
-# --- 5. LOGIK-KERN ---
-bn = create_final_bn(n_v, 0.05, 0.02, b_mat, w_mat)
-inf = VariableElimination(bn)
+# --- 5. CORE SIMULATION ENGINE ---
+bn = build_ultra_bn(n_vib, n_temp, 0.05)
+infer = VariableElimination(bn)
 
-if st.session_state.is_run and not st.session_state.has_broken:
-    st.session_state.count += 1
+if st.session_state.state['active'] and not st.session_state.state['broken']:
+    s = st.session_state.state
+    s['cycle'] += 1
     
-    # Realistischer Verschleiß-Zuwachs
-    mat_mult = {"Alu": 0.05, "Edelstahl": 0.5, "Titan": 2.5}[w_mat]
-    wear_inc = (v_cut * f_in * mat_mult * (10 if k_fail else 1)) / 500
-    st.session_state.cum_wear += wear_inc
+    # Real-time Wear Physics (Taylor Equation inspired)
+    mat_severity = {"Alu-Cast": 0.05, "Stainless 1.4301": 0.4, "Titanium Gr. 5": 2.2}[mat]
+    tool_robustness = 2.5 if "VHM" in tool else 0.8
+    load_factor = (vc * f * 10) / 100
     
-    # Sensoren simulieren
-    vib_val = np.random.normal(15, 3) + (st.session_state.cum_wear * 0.6) + (instability * 40)
-    temp_val = np.random.normal(35, 2) + (st.session_state.cum_wear * 0.5) + (120 if k_fail else 0)
+    wear_step = (mat_severity * load_factor) / (tool_robustness * (10 if cooling else 0.5))
+    # Add random micro-fractures
+    if s['seed'].rand() > 0.97: wear_step *= 5.0 
     
-    # Evidenz für KI
-    ev = {
-        'Verschleiss': 0 if st.session_state.cum_wear < 30 else (1 if st.session_state.cum_wear < 80 else 2),
-        'Kuehlung': 1 if k_fail else 0,
-        'Vorschub_Regler': 1 if f_in > 0.3 else 0,
-        'Vibration': 1 if vib_val > 50 else 0,
-        'Temperatur': 1 if temp_val > 70 else 0
+    s['wear'] += wear_step
+    
+    # Stochastic Sensors
+    current_load = 1 if (vc * f > 30 or s['seed'].rand() > 0.95) else 0
+    raw_vib = 10 + (s['wear'] * 0.5) + (instability * 40) + s['seed'].normal(0, 4)
+    raw_temp = 25 + (s['wear'] * 0.8) + (vc * 0.2) + (0 if cooling else 130) + s['seed'].normal(0, 2)
+    
+    # AI Inference
+    evidence = {
+        'Wear': 0 if s['wear'] < 35 else (1 if s['wear'] < 85 else 2),
+        'Load': current_load,
+        'Cooling': 0 if cooling else 1,
+        'Vib': 1 if raw_vib > 55 else 0,
+        'Temp': 1 if raw_temp > 85 else 0
     }
     
-    res = inf.query(['Zustand'], evidence=ev).values
-    prob_bruch = res[2]
+    result = infer.query(['Status'], evidence=evidence).values
+    risk = result[2]
     
-    # Bruch-Event
-    if prob_bruch > 0.95 or st.session_state.cum_wear > 120 or st.session_state.manual_fail:
-        st.session_state.has_broken = True
-        st.session_state.is_run = False
-    
-    st.session_state.history.append({'t': st.session_state.count, 'prob': prob_bruch, 'wear': st.session_state.cum_wear, 'temp': temp_val, 'vib': vib_val})
-    st.session_state.logs.insert(0, f"Zyklus {st.session_state.count:04d}: Risiko {prob_bruch:.1%} | Verschleiß {st.session_state.cum_wear:.1f}%")
+    # Failure Logic (Dynamic Thresholds)
+    if risk > 0.96 or s['wear'] > 130 or (risk > 0.7 and s['seed'].rand() > 0.98):
+        s['broken'] = True
+        s['active'] = False
+        
+    # Data Recording
+    s['history'].append({
+        'c': s['cycle'], 'r': risk, 'w': s['wear'], 'v': raw_vib, 't': raw_temp
+    })
+    s['logs'].insert(0, f"[{time.strftime('%H:%M:%S')}] CYC {s['cycle']:04d} | RISK: {risk:.2%} | TEMP: {raw_temp:.1f}°C")
 
-# --- 6. VISUALISIERUNG ---
-st.title("🔩 Industrial AI Lab: Precision Drilling v13")
+# --- 6. DASHBOARD RENDERING ---
+st.title("🔩 AI Precision Drilling - Digital Twin")
+st.caption("Advanced Probabilistic Predictive Maintenance Simulation")
 
-# Aktions-Buttons
-c_b1, c_b2, c_b3, c_b4 = st.columns([1,1,1,2])
-with c_b1:
-    if st.button("▶️ START/STOP", use_container_width=True): st.session_state.is_run = not st.session_state.is_run
-with c_b2:
-    if st.button("🔄 RESET", use_container_width=True):
-        st.session_state.update({'count':0, 'history':[], 'is_run':False, 'logs':[], 'cum_wear':0.0, 'has_broken':False, 'manual_fail':False})
+# Action Buttons
+c1, c2, c3, c4 = st.columns([1,1,1,2])
+with c1: 
+    if st.button("▶️ START/PAUSE", use_container_width=True): st.session_state.state['active'] = not st.session_state.state['active']
+with c2: 
+    if st.button("🔄 SYSTEM RESET", use_container_width=True):
+        st.session_state.state = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'seed':np.random.RandomState(42)}
         st.rerun()
-with c_b3:
-    if st.button("💥 BRUCH", type="primary", use_container_width=True): st.session_state.manual_fail = True
-with c_b4:
-    if st.session_state.has_broken: st.error(f"SYSTEM STOPP: Werkzeugbruch in Zyklus {st.session_state.count}!")
+with c3:
+    if st.button("💥 FORCE FAIL", use_container_width=True): st.session_state.state['wear'] = 110
 
-st.write("---")
+if st.session_state.state['broken']:
+    st.error(f"🚨 CRITICAL SYSTEM FAILURE: Tool broken at cycle {st.session_state.state['cycle']}. Wear level: {st.session_state.state['wear']:.1f}%")
 
-# Telemetrie-Karten
-t1, t2, t3, t4 = st.columns(4)
-with t1: st.markdown(f'<div class="sensor-tile"><small>ZYKLEN</small><br><span class="metric-value">{st.session_state.count}</span></div>', unsafe_allow_html=True)
-with t2: st.markdown(f'<div class="sensor-tile"><small>VERSCHLEISS</small><br><span class="metric-value">{st.session_state.cum_wear:.1f}%</span></div>', unsafe_allow_html=True)
-with t3: 
-    v_val = st.session_state.history[-1]['vib'] if st.session_state.history else 0
-    st.markdown(f'<div class="sensor-tile"><small>VIBRATION (g)</small><br><span class="metric-value">{v_val:.1f}</span></div>', unsafe_allow_html=True)
-with t4:
-    t_val = st.session_state.history[-1]['temp'] if st.session_state.history else 0
-    st.markdown(f'<div class="sensor-tile"><small>TEMP (°C)</small><br><span class="metric-value">{t_val:.1f}</span></div>', unsafe_allow_html=True)
+st.divider()
 
-# Graphen
-col_main, col_side = st.columns([2, 1])
+# Live Metrics
+m1, m2, m3, m4 = st.columns(4)
+last = st.session_state.state['history'][-1] if st.session_state.state['history'] else {'r':0,'w':0,'v':0,'t':0}
 
-with col_main:
-    if st.session_state.history:
-        df = pd.DataFrame(st.session_state.history)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df['t'], y=df['prob']*100, name="Bruch-Risiko (%)", line=dict(color='#ff4b4b', width=4), fill='tozeroy'))
-        fig.add_trace(go.Scatter(x=df['t'], y=df['wear'], name="Verschleiß (%)", line=dict(color='#eeb01f', dash='dot')))
-        fig.update_layout(height=450, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0,r=0,t=0,b=0))
+with m1: st.markdown(f'<div class="sensor-card">CYCLES<br><span class="metric-val">{st.session_state.state["cycle"]}</span></div>', unsafe_allow_html=True)
+with m2: st.markdown(f'<div class="sensor-card">TOOL WEAR<br><span class="metric-val">{st.session_state.state["wear"]:.1f}%</span></div>', unsafe_allow_html=True)
+with m3: st.markdown(f'<div class="sensor-card">VIBRATION<br><span class="metric-val">{last["v"]:.1f}g</span></div>', unsafe_allow_html=True)
+with m4:
+    risk_color = "risk-high" if last['r'] > 0.7 else ""
+    st.markdown(f'<div class="sensor-card">FAILURE RISK<br><span class="metric-val {risk_color}">{last["r"]:.1%}</span></div>', unsafe_allow_html=True)
+
+# Main Visuals
+g1, g2 = st.columns([2, 1])
+
+with g1:
+    if st.session_state.state['history']:
+        df = pd.DataFrame(st.session_state.state['history'])
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, name="AI Risk Index (%)", fill='tozeroy', line=dict(color='#f85149', width=3)))
+        fig.add_trace(go.Scatter(x=df['c'], y=df['w'], name="Mechanical Wear (%)", line=dict(color='#e3b341', dash='dot')), secondary_y=True)
+        fig.update_layout(height=450, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.1))
+        fig.update_yaxes(title_text="AI Risk Probability", secondary_y=False)
+        fig.update_yaxes(title_text="Physical Wear", secondary_y=True)
         st.plotly_chart(fig, use_container_width=True)
 
-with col_side:
-    st.subheader("📡 Inferenz-Log")
-    log_h = "".join([f'<div style="border-bottom:1px solid #30363d; padding:3px;">{l}</div>' for l in st.session_state.logs[:50]])
-    st.markdown(f'<div class="log-container">{log_h}</div>', unsafe_allow_html=True)
+with g2:
+    st.subheader("🛠️ Real-Time Telemetry")
+    log_text = "".join([f"<div style='margin-bottom:4px; color:{'#f85149' if '9' in l[:20] else '#8b949e'}'>{l}</div>" for l in st.session_state.state['logs'][:50]])
+    st.markdown(f'<div class="log-area">{log_text}</div>', unsafe_allow_html=True)
 
-# Gauge für aktuelles Risiko
-if st.session_state.history:
-    curr_risk = st.session_state.history[-1]['prob'] * 100
-    fig_gauge = go.Figure(go.Indicator(
-        mode = "gauge+number", value = curr_risk, title = {'text': "KI-Gefahren-Index"},
-        gauge = {'axis': {'range': [0, 100]}, 'bar': {'color': "#ff4b4b"}, 'steps': [{'range': [0, 50], 'color': "green"}, {'range': [50, 80], 'color': "yellow"}, {'range': [80, 100], 'color': "red"}]}
-    ))
-    fig_gauge.update_layout(height=250, margin=dict(l=20,r=20,t=50,b=20), paper_bgcolor='rgba(0,0,0,0)', font={'color': "white"})
-    st.plotly_chart(fig_gauge, use_container_width=True)
-
-if st.session_state.is_run:
-    time.sleep(st_speed/1000)
+if st.session_state.state['active']:
+    time.sleep(speed/1000)
     st.rerun()
