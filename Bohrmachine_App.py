@@ -26,10 +26,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. ERWEITERTES BAYESSCHES NETZWERK (Material-Logik) ---
+# --- 2. KOMPLEXES BAYESSCHES NETZWERK ---
 @st.cache_resource
-def create_material_bn(noise_v, noise_c, noise_t, bohrer_typ, werkst_typ):
-    # Struktur: Alter, Bohrer-Material, Werkstück -> Zustand -> Sensoren
+def create_material_bn(noise_v, bohrer_typ, werkst_typ):
     model = DiscreteBayesianNetwork([
         ('Alter', 'Zustand'), ('BohrerMat', 'Zustand'), ('WerkstMat', 'Zustand'),
         ('Zustand', 'Vibration'), ('Zustand', 'Strom'),
@@ -37,24 +36,16 @@ def create_material_bn(noise_v, noise_c, noise_t, bohrer_typ, werkst_typ):
         ('Zustand', 'Drehmoment'), ('Zustand', 'Vorschub')
     ])
     
-    # Priors (Werden durch die UI-Wahl festgesetzt)
     cpd_a = TabularCPD('Alter', 3, [[0.7], [0.2], [0.1]]) 
     cpd_bm = TabularCPD('BohrerMat', 2, [[1.0 if bohrer_typ == "HSS" else 0.0], [1.0 if bohrer_typ == "Hartmetall" else 0.0]])
     cpd_wm = TabularCPD('WerkstMat', 2, [[1.0 if werkst_typ == "Aluminium" else 0.0], [1.0 if werkst_typ == "Edelstahl" else 0.0]])
     
-    # Zustand CPT (Komplexe Matrix: 3x2x2 = 12 Kombinationen)
-    # Die Werte repräsentieren P(Zustand | Alter, BohrerMat, WerkstMat)
-    # Wir vereinfachen hier die Logik: HSS in Edelstahl = Hohes Risiko / Hartmetall in Alu = Sicher
     cpd_z = TabularCPD('Zustand', 3, [
-            # Intakt: Höher bei Hartmetall & Alu
             [0.99, 0.95, 0.80, 0.50, 0.90, 0.70, 0.40, 0.10, 0.70, 0.40, 0.10, 0.01], 
-            # Stumpf: Steigt schnell bei HSS & Edelstahl
             [0.01, 0.04, 0.15, 0.30, 0.09, 0.20, 0.40, 0.50, 0.25, 0.40, 0.50, 0.40], 
-            # Bruch: Höchstes Risiko bei altem HSS in Edelstahl
             [0.00, 0.01, 0.05, 0.20, 0.01, 0.10, 0.20, 0.40, 0.05, 0.20, 0.40, 0.59]], 
             evidence=['Alter', 'BohrerMat', 'WerkstMat'], evidence_card=[3, 2, 2])
     
-    # Sensoren (Bleiben stabil in der Logik)
     cpd_v = TabularCPD('Vibration', 2, [[1-noise_v, 0.3, 0.05], [noise_v, 0.7, 0.95]], evidence=['Zustand'], evidence_card=[3])
     cpd_s = TabularCPD('Strom', 2, [[0.95, 0.2, 0.4], [0.05, 0.8, 0.6]], evidence=['Zustand'], evidence_card=[3])
     cpd_t = TabularCPD('Temperatur', 2, [[0.99, 0.1, 0.3], [0.01, 0.9, 0.7]], evidence=['Zustand'], evidence_card=[3])
@@ -74,22 +65,16 @@ if 'history' not in st.session_state:
 
 with st.sidebar:
     st.header("🛠️ Werkzeug-Setup")
-    bohrer_sel = st.selectbox("Bohrermaterial", ["HSS", "Hartmetall"], help="HSS ist günstiger, verschleißt aber schneller.")
-    werkst_sel = st.selectbox("Werkstückmaterial", ["Aluminium", "Edelstahl"], help="Edelstahl erfordert höhere Kräfte und erzeugt mehr Hitze.")
-    
-    st.divider()
-    st.header("⚙️ Sensor-Feinjustierung")
-    n_v = st.slider("Vibrations-Rauschen", 0.0, 0.4, 0.05)
-    n_t = st.slider("Temperatur-Rauschen", 0.0, 0.4, 0.01)
-    
+    bohrer_sel = st.selectbox("Bohrermaterial", ["HSS", "Hartmetall"])
+    werkst_sel = st.selectbox("Werkstückmaterial", ["Aluminium", "Edelstahl"])
     st.divider()
     speed = st.select_slider("Simulations-Takt", [1.0, 0.5, 0.2, 0.1, 0.01], 0.1)
-    auto_stop_active = st.checkbox("Automatischer Not-Halt", value=True)
+    auto_stop_active = st.checkbox("Not-Halt aktiv", value=True)
 
-bn = create_material_bn(n_v, 0.02, n_t, bohrer_sel, werkst_sel)
+bn = create_material_bn(0.05, bohrer_sel, werkst_sel)
 inf = VariableElimination(bn)
 
-# --- 4. HEADER ---
+# --- 4. DASHBOARD HEADER ---
 st.title("🛡️ AI Industrial Twin - Expert Edition")
 c1, c2, c3, c4 = st.columns([1, 1, 1, 1.5])
 with c1:
@@ -101,25 +86,23 @@ with c2:
         st.session_state.update({'count':0, 'history':[], 'is_run':False, 'emergency_stop': False, 'manual_fail': False, 'event_logs': []})
         st.rerun()
 with c3:
-    if st.button("💥 BRUCH SIMULIEREN", type="primary", use_container_width=True): st.session_state.manual_fail = True
+    if st.button("💥 BRUCH SIMULIEREN", type="primary", use_container_width=True): 
+        st.session_state.manual_fail = True
 with c4:
     st.subheader(f"Durchläufe: {st.session_state.count}")
 
-# --- 5. SIMULATION ---
+# --- 5. SIMULATION LOGIK ---
 if st.session_state.is_run:
     st.session_state.count += 1
     age = min(2, st.session_state.count // 40)
     
-    # Kausale Logik für Simulationstyp
     if st.session_state.manual_fail:
         true_z = 2
         st.session_state.manual_fail = False
     else:
-        # Wahrscheinlichkeit für Defekt steigt bei Edelstahl + HSS
-        base_risk = 0.95 if (werkst_sel == "Edelstahl" and bohrer_sel == "HSS") else 0.99
-        true_z = 1 if (age >= 1 and np.random.random() > base_risk) else 0
+        risk = 0.94 if (werkst_sel == "Edelstahl" and bohrer_sel == "HSS") else 0.99
+        true_z = 1 if (age >= 1 and np.random.random() > risk) else 0
     
-    # Physikalische Werte generieren
     v_amp = np.random.normal(loc=(85 if true_z == 2 else 15), scale=8) 
     t_val = np.random.normal(loc=(78 if true_z == 1 else (45 if werkst_sel == "Edelstahl" else 28)), scale=4)
     torque = np.random.normal(loc=(65 if werkst_sel == "Edelstahl" else 30), scale=5)
@@ -133,12 +116,8 @@ if st.session_state.is_run:
     }
     res = inf.query(['Zustand'], evidence=ev).values
     
-    # Log-System
     timestamp = time.strftime("%H:%M:%S")
-    log_msg = f"[{timestamp}] #{st.session_state.count}: {bohrer_sel} in {werkst_sel} -> "
-    if res[2] > 0.5: log_msg += "🔴 KRITISCH"
-    elif res[1] > 0.5: log_msg += "🟡 STUMPF"
-    else: log_msg += "🟢 OK"
+    log_msg = f"[{timestamp}] #{st.session_state.count}: {bohrer_sel}/{werkst_sel}"
     st.session_state.event_logs.insert(0, log_msg)
     
     st.session_state.history.append({'t': st.session_state.count, 'Intakt': res[0], 'Stumpf': res[1], 'Bruch': res[2], 'v_amp': v_amp, 'temp': t_val, 'torque': torque})
@@ -150,54 +129,39 @@ else:
     res = [1, 0, 0]
     ev = None
 
-# --- 6. DISPLAY ---
+# --- 6. DISPLAY LAYOUT ---
 if st.session_state.emergency_stop:
-    st.error("🚨 NOT-HALT: Bruchgefahr bei über 90%! Bohrer gesichert.")
+    st.error("🚨 NOT-HALT AUSGELÖST!")
 
 st.write("---")
-col_tele, col_graph, col_log = st.columns([1, 2, 1.2])
+# Hier definieren wir die Spalten neu und nutzen sie sofort
+col_a, col_b, col_c = st.columns([1, 2, 1.2])
 
-with col_tele:
-    st.subheader("📡 Echtzeit-Daten")
-    l_v = st.session_state.history[-1]['v_amp'] if st.session_state.history else 0
-    l_t = st.session_state.history[-1]['temp'] if st.session_state.history else 0
-    l_d = st.session_state.history[-1]['torque'] if st.session_state.history else 0
-    
-    st.markdown(f'<div class="sensor-tile"><small>VIBRATION</small><br><b style="color:{"#ef4444" if l_v > 50 else "#3b82f6"}">{l_v:.1f} mm/s</b></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sensor-tile"><small>TEMPERATUR</small><br><b style="color:{"#f97316" if l_t > 55 else "#10b981"}">{l_t:.1f} °C</b></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sensor-tile"><small>DREHMOMENT</small><br><b>{l_d:.1f} Nm</b></div>', unsafe_allow_html=True)
-    
-    st.caption("Maschinen-Status")
-    st.info(f"Setup: {bohrer_sel} / {werkst_sel}")
+with col_a:
+    st.subheader("📡 Sensordaten")
+    h = st.session_state.history[-1] if st.session_state.history else {'v_amp':0, 'temp':0, 'torque':0}
+    st.markdown(f'<div class="sensor-tile">VIB: {h["v_amp"]:.1f} mm/s</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sensor-tile">TEMP: {h["temp"]:.1f} °C</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sensor-tile">TORQ: {h["torque"]:.1f} Nm</div>', unsafe_allow_html=True)
 
-with col_brain:
-    st.subheader("🧠 Bayessche Diagnose")
-    b1, b2, b3 = st.columns(3)
-    b1.metric("Intakt", f"{res[0]:.1%}")
-    b2.metric("Stumpf", f"{res[1]:.1%}")
-    b3.metric("Bruch", f"{res[2]:.1%}", delta=f"{res[2]*100:.1f}%", delta_color="inverse")
+with col_b:
+    st.subheader("🧠 KI-Status")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Intakt", f"{res[0]:.0%}")
+    m2.metric("Stumpf", f"{res[1]:.0%}")
+    m3.metric("Bruch", f"{res[2]:.0%}")
     
     if st.session_state.history:
         df = pd.DataFrame(st.session_state.history)
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df['t'], y=df['Bruch'], name="Bruch", fill='tozeroy', line=dict(color='#ef4444')))
-        fig.add_trace(go.Scatter(x=df['t'], y=df['Stumpf'], name="Verschleiß", line=dict(color='#f59e0b')))
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0.5)', height=250, margin=dict(l=0,r=0,t=0,b=0), font=dict(color="white"), xaxis=dict(showgrid=False))
+        fig.add_trace(go.Scatter(x=df['t'], y=df['Bruch'], name="Bruch", fill='tozeroy', line_color='red'))
+        fig.update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
 
-with col_log:
-    st.subheader("📜 System-Logbuch")
-    log_html = "".join([f'<div class="log-entry">{log}</div>' for log in st.session_state.event_logs])
+with col_c:
+    st.subheader("📜 Logbuch")
+    log_html = "".join([f'<div class="log-entry">{l}</div>' for l in st.session_state.event_logs[:50]])
     st.markdown(f'<div class="log-container">{log_html}</div>', unsafe_allow_html=True)
-
-if ev:
-    with st.expander("💡 Kausale Begründung", expanded=True):
-        if bohrer_sel == "HSS" and werkst_sel == "Edelstahl":
-            st.warning("Kritische Paarung: HSS-Bohrer in Edelstahl führt zu beschleunigter thermischer Degradation.")
-        if ev['Temperatur'] and werkst_sel == "Edelstahl":
-            st.write("Hohe Temperatur ist bei Edelstahl normal, aber in Kombination mit Drehmoment-Peaks steigt die Stumpf-Wahrscheinlichkeit.")
-        if ev['Vibration']:
-            st.write("Vibrations-Peaks detektiert. Das Modell gewichtet dies als primäres Indiz für einen Bruch.")
 
 if st.session_state.is_run:
     time.sleep(speed)
