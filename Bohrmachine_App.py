@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 
-# --- 1. SETUP ---
-st.set_page_config(layout="wide", page_title="KI-Physik-Labor v16", page_icon="🔬")
+# --- 1. SETUP & THEME ---
+st.set_page_config(layout="wide", page_title="KI-Physik-Labor v17", page_icon="🔬")
 
 st.markdown("""
     <style>
@@ -18,42 +18,52 @@ st.markdown("""
         background-color: #161b22; border: 1px solid #30363d; 
         border-radius: 12px; padding: 15px; text-align: center;
     }
+    .cycle-counter {
+        font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; 
+        font-weight: 800; color: #79c0ff; text-shadow: 0 0 10px #58a6ff66;
+    }
     .metric-val { font-family: 'JetBrains Mono', monospace; font-size: 1.8rem; font-weight: 700; color: #58a6ff; }
     .log-area { font-family: 'Consolas', monospace; font-size: 0.8rem; height: 350px; overflow-y: auto; background: #010409; padding: 10px; border: 1px solid #30363d; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-ENGINE (ERWEITERT) ---
+# --- 2. ERWEITERTES KI-MODELL (MIT ZYKLEN-ABHÄNGIGKEIT) ---
 @st.cache_resource
-def build_physics_bn(n_v, n_t):
+def build_advanced_bn(n_v, n_t):
+    # 'Zyklen' ist nun ein direkter Einflussfaktor auf den 'Zustand'
     model = DiscreteBayesianNetwork([
-        ('Verschleiss', 'Zustand'), ('Drehmoment', 'Zustand'), ('Kuehlung', 'Zustand'),
-        ('Zustand', 'Vibration'), ('Zustand', 'Temperatur'), ('Zustand', 'Leistungsaufnahme')
+        ('Zyklen_Status', 'Zustand'), ('Verschleiss', 'Zustand'), 
+        ('Drehmoment', 'Zustand'), ('Kuehlung', 'Zustand'),
+        ('Zustand', 'Vibration'), ('Zustand', 'Temperatur')
     ])
     
-    cpd_v = TabularCPD('Verschleiss', 3, [[0.33], [0.33], [0.34]])
-    cpd_d = TabularCPD('Drehmoment', 2, [[0.8], [0.2]]) # Normal vs Spitzenlast
-    cpd_k = TabularCPD('Kuehlung', 2, [[0.95], [0.05]])
+    # Prioren
+    cpd_zy = TabularCPD('Zyklen_Status', 3, [[0.33], [0.33], [0.34]]) # Neu, Gebraucht, Alt
+    cpd_ve = TabularCPD('Verschleiss', 3, [[0.33], [0.33], [0.34]])
+    cpd_dm = TabularCPD('Drehmoment', 2, [[0.8], [0.2]])
+    cpd_kh = TabularCPD('Kuehlung', 2, [[0.95], [0.05]])
     
+    # Zustand CPT: 3(Zyk) * 3(Ver) * 2(Dreh) * 2(Kühl) = 36 Kombinationen
     z_matrix = []
-    for v in range(3):
-        for d in range(2):
-            for k in range(2):
-                # Drehmoment ist ein kritischer Faktor für Torsionsbruch
-                score = (v * 2.0) + (d * 5.0) + (k * 6.0)
-                p_bruch = min(0.99, (score**2.5) / 250.0)
-                p_warn = min(1.0 - p_bruch, score / 12.0)
-                p_ok = 1.0 - p_warn - p_bruch
-                z_matrix.append([p_ok, p_warn, p_bruch])
-                
+    for zy in range(3): # Zyklen-Einfluss
+        for ve in range(3):
+            for dm in range(2):
+                for kh in range(2):
+                    # Zyklen erhöhen das Risiko massiv (Ermüdung)
+                    score = (zy * 3.5) + (ve * 2.0) + (dm * 4.0) + (kh * 6.0)
+                    p_bruch = min(0.995, (score**2.8) / 450.0)
+                    p_warn = min(1.0 - p_bruch, score / 10.0)
+                    p_ok = 1.0 - p_warn - p_bruch
+                    z_matrix.append([p_ok, p_warn, p_bruch])
+                    
     cpd_z = TabularCPD('Zustand', 3, np.array(z_matrix).T, 
-                       evidence=['Verschleiss', 'Drehmoment', 'Kuehlung'], evidence_card=[3, 2, 2])
+                       evidence=['Zyklen_Status', 'Verschleiss', 'Drehmoment', 'Kuehlung'], 
+                       evidence_card=[3, 3, 2, 2])
     
     cpd_vib = TabularCPD('Vibration', 2, [[1-n_v, 0.4, 0.05], [n_v, 0.6, 0.95]], evidence=['Zustand'], evidence_card=[3])
-    cpd_temp = TabularCPD('Temperatur', 2, [[0.98, 0.3, 0.01], [0.02, 0.7, 0.99]], evidence=['Zustand'], evidence_card=[3])
-    cpd_pwr = TabularCPD('Leistungsaufnahme', 2, [[0.9, 0.2, 0.1], [0.1, 0.8, 0.9]], evidence=['Zustand'], evidence_card=[3])
+    cpd_tmp = TabularCPD('Temperatur', 2, [[0.98, 0.3, 0.01], [0.02, 0.7, 0.99]], evidence=['Zustand'], evidence_card=[3])
     
-    model.add_cpds(cpd_v, cpd_d, cpd_k, cpd_z, cpd_vib, cpd_temp, cpd_pwr)
+    model.add_cpds(cpd_zy, cpd_ve, cpd_dm, cpd_kh, cpd_z, cpd_vib, cpd_tmp)
     return model
 
 # --- 3. SESSION STATE ---
@@ -63,110 +73,114 @@ if 'state' not in st.session_state:
         'aktiv': False, 'gebrochen': False, 'temp_aktuell': 20.0, 'rng': np.random.RandomState(42)
     }
 
-# --- 4. BEDIENPANEL ---
+# --- 4. SEITENLEISTE ---
 with st.sidebar:
     st.header("⚙️ Maschinenparameter")
-    
-    with st.expander("Werkzeuggeometrie", expanded=True):
-        d_bohrer = st.number_input("Bohrerdurchmesser [mm]", 1.0, 50.0, 10.0)
-        bohrer_typ = st.selectbox("Beschichtung", ["TiN", "TiAlN (Hard)", "Diamond-Like Carbon"])
-        material = st.selectbox("Werkstoff", ["Alu", "Stahl 42CrMo4", "Inconel 718"])
-        
-    with st.expander("Prozessdaten"):
-        vc = st.slider("vc (m/min)", 10, 400, 120)
-        f = st.slider("f (mm/U)", 0.01, 0.8, 0.12)
-        kuehlung = st.toggle("Kühlschmierung (KSS)", value=True)
+    material = st.selectbox("Werkstoff", ["Alu", "Stahl 42CrMo4", "Inconel 718"])
+    vc = st.slider("vc (m/min)", 10, 400, 100)
+    f = st.slider("f (mm/U)", 0.01, 0.8, 0.10)
+    d_bohrer = st.number_input("Bohrerdurchmesser [mm]", 1.0, 50.0, 8.0)
+    kuehlung = st.toggle("Kühlung aktiv", value=True)
+    st_takt = st.select_slider("Sim-Takt [ms]", [500, 200, 100, 50], 100)
 
-    with st.expander("Störgrößen"):
-        n_vib = st.slider("Vibrationsrauschen", 0.0, 1.0, 0.1)
-        st_takt = st.select_slider("Sim-Takt [ms]", [500, 200, 100, 50], 100)
-
-# --- 5. PHYSIK-ENGINE ---
-bn = build_physics_bn(n_vib, 0.05)
+# --- 5. PHYSIK-RECHNER ---
+bn = build_advanced_bn(0.1, 0.05)
 infer = VariableElimination(bn)
 
 if st.session_state.state['aktiv'] and not st.session_state.state['gebrochen']:
     s = st.session_state.state
     s['zyklus'] += 1
     
-    # Physikalische Berechnungen
-    # Spezifische Schnittkraft kc (vereinfacht)
+    # Berechnung Drehmoment Md
     kc = {"Alu": 800, "Stahl 42CrMo4": 2100, "Inconel 718": 3500}[material]
+    md = ((d_bohrer / 2) * f * kc * d_bohrer) / 2000
     
-    # Schnittkraft Fc = b * h * kc
-    fc = (d_bohrer / 2) * f * kc
-    # Drehmoment Md = (Fc * D) / 2000 [Nm]
-    md = (fc * d_bohrer) / 2000
-    # Leistungsaufnahme P = Md * n / 9550
-    drehzahl = (vc * 1000) / (np.pi * d_bohrer)
-    leistung = (md * drehzahl) / 9550
+    # Verschleiß-Berechnung
+    v_faktor = {"Alu": 0.01, "Stahl 42CrMo4": 0.2, "Inconel 718": 1.2}[material]
+    s['verschleiss'] += (v_faktor * (vc**1.5) * f) / (12000 if kuehlung else 500)
     
-    # Verschleißdynamik
-    v_faktor = {"Alu": 0.02, "Stahl 42CrMo4": 0.3, "Inconel 718": 1.8}[material]
-    v_zuwachs = (v_faktor * (vc**1.6) * f) / (15000 if kuehlung else 800)
-    s['verschleiss'] += v_zuwachs
+    # Temperatur-Modell
+    ziel_temp = 22 + (s['verschleiss'] * 1.1) + (vc * 0.1) + (0 if kuehlung else 150)
+    s['temp_aktuell'] += (ziel_temp - s['temp_aktuell']) * 0.15
     
-    # Thermodynamik (Abkühlkurve/Erhitzung)
-    ziel_temp = 25 + (s['verschleiss'] * 0.8) + (vc * 0.12) + (0 if kuehlung else 180)
-    s['temp_aktuell'] += (ziel_temp - s['temp_aktuell']) * 0.2 # Trägheit
+    # KI-INFERENZ mit Zyklen-Logik
+    # Wir definieren Zyklen-Status: 0: <100, 1: 100-500, 2: >500 (Beispielhaft skaliert)
+    zyk_idx = 0 if s['zyklus'] < 200 else (1 if s['zyklus'] < 600 else 2)
+    ver_idx = 0 if s['verschleiss'] < 30 else (1 if s['verschleiss'] < 80 else 2)
     
-    # KI-Inferenz
     beweis = {
-        'Verschleiss': 0 if s['verschleiss'] < 30 else (1 if s['verschleiss'] < 85 else 2),
-        'Drehmoment': 1 if md > (d_bohrer * 1.5) else 0, # Torsionsgefahr
-        'Kuehlung': 0 if kuehlung else 1,
-        'Vibration': 1 if s['rng'].rand() > 0.95 else 0,
-        'Temperatur': 1 if s['temp_aktuell'] > 100 else 0
+        'Zyklen_Status': zyk_idx,
+        'Verschleiss': ver_idx,
+        'Drehmoment': 1 if md > (d_bohrer * 1.8) else 0,
+        'Kuehlung': 0 if kuehlung else 1
     }
     risiko = infer.query(['Zustand'], evidence=beweis).values[2]
     
-    if risiko > 0.98 or s['verschleiss'] > 140:
+    # Bruch-Logik
+    if risiko > 0.98 or s['verschleiss'] > 150:
         s['gebrochen'] = True
         s['aktiv'] = False
 
-    s['historie'].append({'z': s['zyklus'], 'r': risiko, 'w': s['verschleiss'], 'md': md, 'p': leistung, 't': s['temp_aktuell']})
-    s['logs'].insert(0, f"ZYK {s['zyklus']}: Md={md:.1f}Nm | P={leistung:.2f}kW | R={risiko:.1%}")
+    s['historie'].append({'z': s['zyklus'], 'r': risiko, 'w': s['verschleiss'], 't': s['temp_aktuell'], 'md': md})
+    s['logs'].insert(0, f"Zyk {s['zyklus']}: Risiko {risiko:.1%} | Md {md:.1f}Nm")
 
 # --- 6. DASHBOARD ---
-st.title("🛡️ KI-Physik-Labor: Zerspanung 4.0")
+st.title("🛡️ KI-Physik-Labor: Ermüdung & Bruchvorhersage")
 
-# Buttons
-c1, c2, c3 = st.columns(3)
-with c1: 
+# ZYKLEN-GROSSANZEIGE
+c_top1, c_top2 = st.columns([1, 2])
+with c_top1:
+    st.markdown(f"""
+        <div class="sensor-card">
+            <small>GESAMTZYKLEN</small><br>
+            <div class="cycle-counter">{st.session_state.state['zyklus']}</div>
+        </div>
+    """, unsafe_allow_html=True)
+with c_top2:
+    if st.session_state.state['historie']:
+        df = pd.DataFrame(st.session_state.state['historie'])
+        fig_r = go.Figure()
+        fig_r.add_trace(go.Scatter(x=df['z'], y=df['r']*100, fill='tozeroy', name="Bruch-Risiko %", line=dict(color='#f85149')))
+        fig_r.update_layout(height=180, template="plotly_dark", margin=dict(l=10,r=10,t=10,b=10), paper_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_r, use_container_width=True)
+
+st.write("")
+
+# Steuerung
+c_ctrl1, c_ctrl2, c_ctrl3 = st.columns(3)
+with c_ctrl1: 
     if st.button("▶️ START/STOP", use_container_width=True): st.session_state.state['aktiv'] = not st.session_state.state['aktiv']
-with c2:
-    if st.button("🔄 RESET", use_container_width=True):
+with c_ctrl2:
+    if st.button("🔄 SYSTEM-RESET", use_container_width=True):
         st.session_state.state = {'zyklus':0,'verschleiss':0.0,'historie':[],'logs':[],'aktiv':False,'gebrochen':False,'temp_aktuell':20.0,'rng':np.random.RandomState(42)}
         st.rerun()
-with c3:
-    if st.session_state.state['gebrochen']: st.error("WERKZEUGBRUCH!")
+with c_ctrl3:
+    if st.session_state.state['gebrochen']: st.error("WERKZEUGBRUCH ERFOLGT!")
 
 st.divider()
 
-# Anzeigen
+# Telemetrie
 m1, m2, m3, m4 = st.columns(4)
-last = st.session_state.state['historie'][-1] if st.session_state.state['historie'] else {'md':0,'p':0,'t':20,'r':0}
+last = st.session_state.state['historie'][-1] if st.session_state.state['historie'] else {'md':0,'w':0,'t':20,'r':0}
 
-with m1: st.markdown(f'<div class="sensor-card">Drehmoment<br><span class="metric-val">{last["md"]:.1f} Nm</span></div>', unsafe_allow_html=True)
-with m2: st.markdown(f'<div class="sensor-card">Leistung<br><span class="metric-val">{last["p"]:.2f} kW</span></div>', unsafe_allow_html=True)
+with m1: st.markdown(f'<div class="sensor-card">Verschleiß<br><span class="metric-val">{last["w"]:.1f} %</span></div>', unsafe_allow_html=True)
+with m2: st.markdown(f'<div class="sensor-card">Drehmoment<br><span class="metric-val">{last["md"]:.1f} Nm</span></div>', unsafe_allow_html=True)
 with m3: st.markdown(f'<div class="sensor-card">Temperatur<br><span class="metric-val">{last["t"]:.1f} °C</span></div>', unsafe_allow_html=True)
-with m4: st.markdown(f'<div class="sensor-card">Bruch-Risiko<br><span class="metric-val" style="color:#f85149">{last["r"]:.1%}</span></div>', unsafe_allow_html=True)
+with m4: st.markdown(f'<div class="sensor-card">KI-Konfidenz<br><span class="metric-val" style="color:{"#f85149" if last["r"] > 0.8 else "#58a6ff"}">{(1-last["r"]):.1%}</span></div>', unsafe_allow_html=True)
 
-
-
-# Grafiken
-col_l, col_r = st.columns([2, 1])
-with col_l:
+# Graphen & Log
+col_graph, col_log = st.columns([2, 1])
+with col_graph:
     if st.session_state.state['historie']:
         df = pd.DataFrame(st.session_state.state['historie'])
         fig = make_subplots(specs=[[{"secondary_y": True}]])
-        fig.add_trace(go.Scatter(x=df['z'], y=df['r']*100, name="KI-Risiko (%)", fill='tozeroy', line=dict(color='red')))
-        fig.add_trace(go.Scatter(x=df['z'], y=df['md'], name="Drehmoment (Nm)", line=dict(color='cyan')), secondary_y=True)
-        fig.update_layout(height=400, template="plotly_dark", title="KI-Risiko vs. Mechanisches Drehmoment")
+        fig.add_trace(go.Scatter(x=df['z'], y=df['w'], name="Verschleiß", line=dict(color='#e3b341')))
+        fig.add_trace(go.Scatter(x=df['z'], y=df['t'], name="Temperatur", line=dict(color='#ff7b72')), secondary_y=True)
+        fig.update_layout(height=400, template="plotly_dark", title="Physikalische Trends")
         st.plotly_chart(fig, use_container_width=True)
 
-with col_r:
-    st.subheader("📜 System-Log")
+with col_log:
+    st.subheader("📜 Event-Log")
     log_h = "".join([f"<div>{l}</div>" for l in st.session_state.state['logs'][:50]])
     st.markdown(f'<div class="log-area">{log_h}</div>', unsafe_allow_html=True)
 
