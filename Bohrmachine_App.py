@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & DESIGN (MODERN DARK THEME) ---
-st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.5", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.6", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -42,11 +42,13 @@ if 'twin' not in st.session_state:
         'seed': np.random.RandomState(42)
     }
 
+# MATERIALIEN MIT SPRECHENDEN DEUTSCHEN NAMEN
 MATERIALIEN = {
-    "Stahl 42CrMo4": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.2, "temp_crit": 550},
-    "Edelstahl 1.4404": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.4, "temp_crit": 650},
-    "Titan Legierung": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750},
-    "Inconel Superalloy": {"kc1.1": 3400, "mc": 0.26, "wear_rate": 2.5, "temp_crit": 850}
+    "Baustahl (S235JR)": {"kc1.1": 1900, "mc": 0.26, "wear_rate": 0.15, "temp_crit": 500},
+    "Vergütungsstahl (42CrMo4)": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.2, "temp_crit": 550},
+    "Edelstahl (rostfrei 1.4404)": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.4, "temp_crit": 650},
+    "Titan-Legierung (hochfest)": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750},
+    "Inconel (Superlegierung)": {"kc1.1": 3400, "mc": 0.26, "wear_rate": 2.5, "temp_crit": 850}
 }
 
 @st.cache_resource
@@ -76,7 +78,7 @@ def get_engine():
 # --- 3. SEITENLEISTE (KONFIGURATION) ---
 with st.sidebar:
     st.header("⚙️ Maschinen-Parameter")
-    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
+    mat_name = st.selectbox("Werkstoff wählen", list(MATERIALIEN.keys()))
     mat = MATERIALIEN[mat_name]
     vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160)
     f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18)
