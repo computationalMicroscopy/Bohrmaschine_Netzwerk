@@ -8,181 +8,178 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 
-# --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI-Physik-Labor v19", page_icon="🔬")
+# --- 1. INDUSTRIAL DASHBOARD SETUP ---
+st.set_page_config(layout="wide", page_title="AI Precision Twin v20", page_icon="🔩")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
-    .sensor-card { 
-        background-color: #161b22; border: 1px solid #30363d; 
-        border-radius: 12px; padding: 15px; text-align: center;
+    .metric-container { 
+        background-color: #161b22; border-left: 5px solid #58a6ff; 
+        border-radius: 8px; padding: 15px; margin: 5px;
     }
-    .cycle-counter {
-        font-family: 'JetBrains Mono', monospace; font-size: 3rem; 
-        font-weight: 800; color: #79c0ff;
-    }
-    .metric-val { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; font-weight: 700; color: #58a6ff; }
-    .log-area { font-family: 'Consolas', monospace; font-size: 0.75rem; height: 350px; overflow-y: auto; background: #010409; padding: 10px; border: 1px solid #30363d; }
+    .main-cycle { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #79c0ff; font-weight: 800; }
+    .sub-label { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+    .log-terminal { font-family: 'Consolas', monospace; font-size: 0.8rem; height: 400px; overflow-y: auto; background: #010409; padding: 15px; border: 1px solid #30363d; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-MODELL (KALIBRIERT AUF AMPLITUDE) ---
+# --- 2. MATERIAL-DATENBANK (PROFI-WERTE) ---
+MATERIALIEN = {
+    "Alu (G-AlSi10Mg)": {"kc1.1": 700, "mc": 0.2, "wear_rate": 0.01, "temp_crit": 150},
+    "Stahl (42CrMo4)": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.2, "temp_crit": 550},
+    "Edelstahl (1.4404)": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.4, "temp_crit": 650},
+    "Titan (TiAl6V4)": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750},
+    "Inconel 718": {"kc1.1": 3400, "mc": 0.26, "wear_rate": 2.5, "temp_crit": 900}
+}
+
+# --- 3. KI-KERN (PROBABILISTISCHE GRAPHISCHE MODELLE) ---
 @st.cache_resource
-def build_v19_bn(n_v, n_t, n_s):
+def get_inference_engine(n_v, n_t):
     model = DiscreteBayesianNetwork([
-        ('Alterung', 'Zustand'), ('Verschleiss', 'Zustand'), ('Last', 'Zustand'), ('Kuehlung', 'Zustand'),
-        ('Zustand', 'Amplitude'), ('Zustand', 'Temperatur'), ('Zustand', 'Stromaufnahme')
+        ('ToolAge', 'State'), ('MechLoad', 'State'), ('ThermalStress', 'State'), ('Coolant', 'State'),
+        ('State', 'Amplitude'), ('State', 'TempSens'), ('State', 'TorqueSens')
     ])
+    # Definition der CPTs (Conditional Probability Tables) auf Basis von Ingenieurswissen
+    # State: 0=Stable, 1=Degraded, 2=Critical
+    # Logik: Kombinationen aus Last und Hitze führen exponentiell zum Versagen
+    cpd_age = TabularCPD('ToolAge', 3, [[0.33], [0.33], [0.34]])
+    cpd_load = TabularCPD('MechLoad', 2, [[0.8], [0.2]])
+    cpd_therm = TabularCPD('ThermalStress', 2, [[0.9], [0.1]])
+    cpd_cool = TabularCPD('Coolant', 2, [[0.98], [0.02]])
     
-    cpd_zy = TabularCPD('Alterung', 3, [[0.33], [0.33], [0.34]])
-    cpd_ve = TabularCPD('Verschleiss', 3, [[0.33], [0.33], [0.34]])
-    cpd_la = TabularCPD('Last', 2, [[0.7], [0.3]])
-    cpd_kh = TabularCPD('Kuehlung', 2, [[0.95], [0.05]])
-    
+    # State-CPT-Matrix (vereinfachte Darstellung für Stabilität)
     z_matrix = []
-    for zy in range(3):
-        for ve in range(3):
-            for la in range(2):
-                for kh in range(2):
-                    score = (zy * 3.0) + (ve * 2.5) + (la * 4.5) + (kh * 6.0)
-                    p_bruch = min(0.99, (score**2.5) / 350.0)
-                    p_warn = min(1.0 - p_bruch, score / 10.0)
-                    z_matrix.append([1.0-p_warn-p_bruch, p_warn, p_bruch])
-                    
-    cpd_z = TabularCPD('Zustand', 3, np.array(z_matrix).T, evidence=['Alterung', 'Verschleiss', 'Last', 'Kuehlung'], evidence_card=[3, 3, 2, 2])
+    for a in range(3):
+        for l in range(2):
+            for t in range(2):
+                for c in range(2):
+                    score = (a * 2) + (l * 4) + (t * 5) + (c * 7)
+                    p2 = min(0.99, (score**2.4) / 300.0)
+                    p1 = min(1.0-p2, score / 15.0)
+                    z_matrix.append([1.0-p1-p2, p1, p2])
     
-    # Amplitude in mm: 0 = Gering (<0.05mm), 1 = Hoch (>0.05mm)
-    cpd_amp = TabularCPD('Amplitude', 2, [[1-n_v, 0.4, 0.02], [n_v, 0.6, 0.98]], evidence=['Zustand'], evidence_card=[3])
-    cpd_tmp = TabularCPD('Temperatur', 2, [[1-n_t, 0.3, 0.01], [n_t, 0.7, 0.99]], evidence=['Zustand'], evidence_card=[3])
-    cpd_str = TabularCPD('Stromaufnahme', 2, [[1-n_s, 0.2, 0.1], [n_s, 0.8, 0.9]], evidence=['Zustand'], evidence_card=[3])
+    cpd_state = TabularCPD('State', 3, np.array(z_matrix).T, 
+                           evidence=['ToolAge', 'MechLoad', 'ThermalStress', 'Coolant'], 
+                           evidence_card=[3, 2, 2, 2])
     
-    model.add_cpds(cpd_zy, cpd_ve, cpd_la, cpd_kh, cpd_z, cpd_amp, cpd_tmp, cpd_str)
-    return model
+    model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state,
+                   TabularCPD('Amplitude', 2, [[0.95, 0.4, 0.05], [0.05, 0.6, 0.95]], ['State'], [3]),
+                   TabularCPD('TempSens', 2, [[0.98, 0.3, 0.02], [0.02, 0.7, 0.98]], ['State'], [3]),
+                   TabularCPD('TorqueSens', 2, [[0.99, 0.5, 0.01], [0.01, 0.5, 0.99]], ['State'], [3]))
+    return VariableElimination(model)
 
-# --- 3. SESSION STATE ---
-if 'state' not in st.session_state:
-    st.session_state.state = {
-        'zyklus': 0, 'verschleiss': 0.0, 'historie': [], 'logs': [], 
-        'aktiv': False, 'gebrochen': False, 'temp_akt': 20.0, 'rng': np.random.RandomState(42)
+# --- 4. SESSION MANAGEMENT ---
+if 'twin' not in st.session_state:
+    st.session_state.twin = {
+        'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False,
+        't_current': 22.0, 'seed': np.random.RandomState(42)
     }
 
-# --- 4. BEDIENPANEL ---
+# --- 5. CONTROL INTERFACE ---
 with st.sidebar:
-    st.header("⚡ Simulations-Kontrolle")
-    # Geschwindigkeitsregler von sehr niedrig bis extrem hoch
-    sim_speed = st.select_slider(
-        "Simulationsgeschwindigkeit", 
-        options=[1000, 500, 200, 100, 50, 20, 10, 0], 
-        value=100,
-        format_func=lambda x: "Extrem Hoch (0ms)" if x == 0 else ("Sehr Niedrig" if x == 1000 else f"{x}ms")
-    )
+    st.title("🔩 Twin Control")
+    mat_name = st.selectbox("Werkstoff wählen (Datenbank)", list(MATERIALIEN.keys()))
+    mat = MATERIALIEN[mat_name]
     
-    st.divider()
-    with st.expander("Prozess-Parameter", expanded=True):
-        material = st.selectbox("Werkstoff", ["Alu", "Edelstahl 1.4301", "Titan Grad 5"])
-        vc = st.slider("vc (m/min)", 10, 450, 150)
-        f = st.slider("f (mm/U)", 0.01, 0.8, 0.15)
-        d_bohrer = st.number_input("Ø Bohrer [mm]", 1.0, 50.0, 10.0)
+    with st.expander("Prozessdaten (CAM)", expanded=True):
+        vc = st.slider("vc - Schnittgeschwindigkeit [m/min]", 20, 500, 160)
+        f = st.slider("f - Vorschub pro Umdrehung [mm/U]", 0.02, 1.0, 0.18)
+        d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
+        cooling = st.toggle("Kühlschmierung (80 Bar)", value=True)
     
-    with st.expander("Sensorik & Rauschen"):
-        n_vib = st.slider("Vibrations-Rauschen", 0.0, 1.0, 0.15)
-        instabil = st.slider("Aufspann-Instabilität (mm)", 0.0, 0.5, 0.02)
-    
-    kuehlung = st.toggle("KSS-Kühlung aktiv", value=True)
+    with st.expander("Maschinendynamik"):
+        speed_idx = st.select_slider("Sim-Frequenz", options=[1000, 500, 100, 50, 10, 0], value=100)
+        v_noise = st.slider("Vibrationsrauschen", 0.0, 1.0, 0.1)
+        instability = st.slider("Aufspann-Starrheit", 0.0, 1.0, 0.05)
 
-# --- 5. PHYSIK-RECHNER ---
-bn = build_v19_bn(n_vib, 0.05, 0.02)
-infer = VariableElimination(bn)
+# --- 6. PHYSICS ENGINE (CALCULATION) ---
+engine = get_inference_engine(v_noise, 0.05)
 
-if st.session_state.state['aktiv'] and not st.session_state.state['gebrochen']:
-    s = st.session_state.state
-    s['zyklus'] += 1
+if st.session_state.twin['active'] and not st.session_state.twin['broken']:
+    s = st.session_state.twin
+    s['cycle'] += 1
     
-    # Physik-Berechnung
-    kc = {"Alu": 800, "Edelstahl 1.4301": 2200, "Titan Grad 5": 3500}[material]
-    md = ((d_bohrer / 2) * f * kc * d_bohrer) / 2000
-    pwr = (md * (vc * 1000 / (np.pi * d_bohrer))) / 9550
+    # 6a. Mechanik: Kienzle-Gleichung für Schnittkraft
+    # h = f * sin(kappa) -> vereinfacht h=f für Bohrer
+    fc = mat['kc1.1'] * (f** (1-mat['mc'])) * (d/2)
+    mc = (fc * d) / 2000 # Drehmoment in Nm
     
-    # Verschleiß
-    v_mat = {"Alu": 0.02, "Edelstahl 1.4301": 0.3, "Titan Grad 5": 1.5}[material]
-    s['verschleiss'] += (v_mat * (vc**1.4) * f) / (10000 if kuehlung else 400)
+    # 6b. Verschleiß: Erweiterte Taylor-Gleichung
+    wear_inc = (mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 600)
+    s['wear'] += wear_inc * (1.5 if s['cycle'] > 500 else 1.0) # End-of-life Beschleunigung
     
-    # Amplitude in mm berechnen (Realistische Werte zwischen 0.01 und 0.5 mm)
-    # Basisvibration + verschleißbedingtes Aufschwingen + Instabilität
-    amp_mm = (0.01 + (s['verschleiss'] * 0.002) + (instabil)) * (1 + s['rng'].normal(0, 0.1))
+    # 6c. Thermodynamik
+    target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
+    s['t_current'] += (target_t - s['t_current']) * 0.15 # Thermische Trägheit
     
-    s['temp_akt'] += (20 + (s['verschleiss'] * 1.2) + (vc * 0.1) + (0 if kuehlung else 160) - s['temp_akt']) * 0.2
+    # 6d. Vibration (Amplitude in mm)
+    amp = (0.005 + (s['wear'] * 0.003) + (instability * 0.2)) * (1 + s['seed'].normal(0, 0.1))
     
-    # Inferenz
-    zyk_idx = 0 if s['zyklus'] < 150 else (1 if s['zyklus'] < 500 else 2)
-    evidenz = {
-        'Alterung': zyk_idx, 'Verschleiss': 0 if s['verschleiss'] < 30 else (1 if s['verschleiss'] < 85 else 2),
-        'Last': 1 if md > (d_bohrer * 1.6) else 0, 'Kuehlung': 0 if kuehlung else 1,
-        'Amplitude': 1 if amp_mm > 0.08 else 0, 'Temperatur': 1 if s['temp_akt'] > 95 else 0
+    # 6e. Inferenz
+    evidence = {
+        'ToolAge': 0 if s['cycle'] < 200 else (1 if s['cycle'] < 600 else 2),
+        'MechLoad': 1 if mc > (d * 2.2) else 0,
+        'ThermalStress': 1 if s['t_current'] > mat['temp_crit'] else 0,
+        'Coolant': 0 if cooling else 1
     }
-    risiko = infer.query(['Zustand'], evidence=evidenz).values[2]
+    risk = engine.query(['State'], evidence=evidence).values[2]
     
-    if risiko > 0.98 or s['verschleiss'] > 145:
-        s['gebrochen'] = True
-        s['aktiv'] = False
+    # Failure Logic
+    if risk > 0.98 or s['wear'] > 150:
+        s['broken'] = True
+        s['active'] = False
+    
+    s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc})
+    s['logs'].insert(0, f"CYC {s['cycle']:04d} | Md: {mc:.2f}Nm | Risk: {risk:.2%}")
 
-    s['historie'].append({'z':s['zyklus'], 'r':risiko, 'w':s['verschleiss'], 't':s['temp_akt'], 'amp':amp_mm, 'md':md})
-    s['logs'].insert(0, f"Zyk {s['zyklus']}: Risiko {risiko:.1%} | Amp {amp_mm:.3f}mm")
+# --- 7. BERICHTERSTATTUNG (UI) ---
+st.title("🔩 Industrial Digital Twin: Drilling Analytics v20")
 
-# --- 6. DASHBOARD ---
-st.title("🔩 Pro-Physik-Labor: High-Speed Simulation v19")
-
-# Top-Sektion
-c_top1, c_top2 = st.columns([1, 2])
-with c_top1:
-    st.markdown(f'<div class="sensor-card"><small>BOHRZYKLEN</small><br><div class="cycle-counter">{st.session_state.state["zyklus"]}</div></div>', unsafe_allow_html=True)
-with c_top2:
-    if st.session_state.state['historie']:
-        df = pd.DataFrame(st.session_state.state['historie'])
-        fig_r = go.Figure(go.Scatter(x=df['z'], y=df['r']*100, fill='tozeroy', name="Bruchrisiko %", line=dict(color='#ff4b4b')))
+# Telemetrie-Dashboard
+c_main, c_risk = st.columns([1, 2])
+with c_main:
+    st.markdown(f'<div class="metric-container"><span class="sub-label">Aktueller Zyklus</span><br><div class="main-cycle">{st.session_state.twin["zyklus"] if "zyklus" in st.session_state.twin else st.session_state.twin["cycle"]}</div></div>', unsafe_allow_html=True)
+with c_risk:
+    if st.session_state.twin['history']:
+        df = pd.DataFrame(st.session_state.twin['history'])
+        fig_r = go.Figure(go.Scatter(x=df['c'], y=df['r']*100, fill='tozeroy', name="Bruch-Risiko (%)", line=dict(color='#ff4b4b', width=3)))
         fig_r.update_layout(height=180, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_r, use_container_width=True)
 
-# Steuerung
-c_b1, c_b2, c_b3 = st.columns(3)
-with c_b1: 
-    if st.button("▶️ SIMULATION START/STOP", use_container_width=True): st.session_state.state['aktiv'] = not st.session_state.state['aktiv']
-with c_b2:
-    if st.button("🔄 LABOR-RESET", use_container_width=True):
-        st.session_state.state = {'zyklus':0,'verschleiss':0.0,'historie':[],'logs':[],'aktiv':False,'gebrochen':False,'temp_akt':20.0,'rng':np.random.RandomState(42)}
-        st.rerun()
-with c_b3:
-    if st.session_state.state['gebrochen']: st.error("WERKZEUGBRUCH!")
+# Sensoren-Karten
+st.write("")
+m1, m2, m3, m4 = st.columns(4)
+last = st.session_state.twin['history'][-1] if st.session_state.twin['history'] else {'w':0,'amp':0,'t':22,'mc':0}
+
+with m1: st.markdown(f'<div class="metric-container"><span class="sub-label">Vibr. Amplitude</span><br><span class="metric-val" style="font-size:1.5rem; font-weight:bold; color:#58a6ff">{last["amp"]:.4f} mm</span></div>', unsafe_allow_html=True)
+with m2: st.markdown(f'<div class="metric-container"><span class="sub-label">Drehmoment</span><br><span class="metric-val" style="font-size:1.5rem; font-weight:bold; color:#58a6ff">{last["mc"]:.2f} Nm</span></div>', unsafe_allow_html=True)
+with m3: st.markdown(f'<div class="metric-container"><span class="sub-label">Temperatur</span><br><span class="metric-val" style="font-size:1.5rem; font-weight:bold; color:#58a6ff">{last["t"]:.1f} °C</span></div>', unsafe_allow_html=True)
+with m4: st.markdown(f'<div class="metric-container"><span class="sub-label">Verschleißgrad</span><br><span class="metric-val" style="font-size:1.5rem; font-weight:bold; color:#e3b341">{last["w"]:.1f} %</span></div>', unsafe_allow_html=True)
 
 st.divider()
 
-# Sensoren
-m1, m2, m3, m4 = st.columns(4)
-last = st.session_state.state['historie'][-1] if st.session_state.state['historie'] else {'w':0,'amp':0,'t':20,'md':0}
-
-with m1: st.markdown(f'<div class="sensor-card">Amplitude<br><span class="metric-val">{last["amp"]:.3f} mm</span></div>', unsafe_allow_html=True)
-with m2: st.markdown(f'<div class="sensor-card">Verschleiß<br><span class="metric-val">{last["w"]:.1f} %</span></div>', unsafe_allow_html=True)
-with m3: st.markdown(f'<div class="sensor-card">Temperatur<br><span class="metric-val">{last["t"]:.1f} °C</span></div>', unsafe_allow_html=True)
-with m4: st.markdown(f'<div class="sensor-card">Drehmoment<br><span class="metric-val">{last["md"]:.1f} Nm</span></div>', unsafe_allow_html=True)
-
-# Grafik & Log
-col_l, col_r = st.columns([2, 1])
-with col_l:
-    if st.session_state.state['historie']:
-        df = pd.DataFrame(st.session_state.state['historie'])
+# Grafik-Sektion
+g_left, g_right = st.columns([2, 1])
+with g_left:
+    if st.session_state.twin['history']:
         fig = make_subplots(specs=[[{"secondary_y": True}]])
-        fig.add_trace(go.Scatter(x=df['z'], y=df['amp'], name="Amplitude (mm)", line=dict(color='cyan')))
-        fig.add_trace(go.Scatter(x=df['z'], y=df['w'], name="Verschleiß (%)", line=dict(color='orange', dash='dot')), secondary_y=True)
-        fig.update_layout(height=400, template="plotly_dark", title="Amplituden-Verlauf vs. Alterung")
+        fig.add_trace(go.Scatter(x=df['c'], y=df['mc'], name="Drehmoment (Nm)", line=dict(color='#58a6ff')))
+        fig.add_trace(go.Scatter(x=df['c'], y=df['t'], name="Temperatur (°C)", line=dict(color='#f85149')), secondary_y=True)
+        fig.update_layout(height=450, template="plotly_dark", title="Mechanisch-Thermische Kopplung", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
 
-with col_r:
-    st.subheader("📜 System-Protokoll")
-    log_h = "".join([f"<div style='border-bottom:1px solid #333'>{l}</div>" for l in st.session_state.state['logs'][:50]])
-    st.markdown(f'<div class="log-area">{log_h}</div>', unsafe_allow_html=True)
+with g_right:
+    st.subheader("🖥️ Echtzeit-Terminal")
+    if st.button("▶️ PROZESS START/STOP", use_container_width=True): st.session_state.twin['active'] = not st.session_state.twin['active']
+    if st.button("🔄 SYSTEM-RESET", use_container_width=True):
+        st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
+        st.rerun()
+    if st.session_state.twin['broken']: st.error("FATAL ERROR: TOOL BREAKAGE DETECTED")
+    
+    log_content = "".join([f"<div style='border-bottom:1px solid #21262d; padding:2px;'>{l}</div>" for l in st.session_state.twin['logs'][:50]])
+    st.markdown(f'<div class="log-terminal">{log_content}</div>', unsafe_allow_html=True)
 
-if st.session_state.state['aktiv']:
-    if sim_speed > 0:
-        time.sleep(sim_speed/1000)
+if st.session_state.twin['active']:
+    if speed_idx > 0: time.sleep(speed_idx/1000)
     st.rerun()
