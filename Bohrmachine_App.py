@@ -1,5 +1,4 @@
 import streamlit as st
-import pd
 import pandas as pd
 import numpy as np
 from pgmpy.models import DiscreteBayesianNetwork
@@ -35,26 +34,22 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-ENGINE (Mathematisch korrekte 24-Kombinationen CPT) ---
+# --- 2. KI-ENGINE (Logik-Update) ---
 @st.cache_resource
 def get_engine():
     model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
-    
-    # Prior CPDs
     cpd_age = TabularCPD('Age', 3, [[0.33], [0.33], [0.34]])
     cpd_load = TabularCPD('Load', 2, [[0.8], [0.2]])
     cpd_therm = TabularCPD('Therm', 2, [[0.9], [0.1]])
     cpd_cool = TabularCPD('Cool', 2, [[0.95], [0.05]])
     
-    # Systematische Generierung der CPT-Matrix (24 Zustände)
     z_matrix = []
-    for age in range(3):        # 0:Neu, 1:Mittel, 2:Alt
-        for load in range(2):    # 0:Normal, 1:Hoch
-            for therm in range(2):# 0:Normal, 1:Hoch
-                for cool in range(2): # 0:Aktiv, 1:Inaktiv
-                    # Risiko-Gewichtung: Kühlung (6) > Thermik (5) > Last (4) > Alter (3)
+    for age in range(3):
+        for load in range(2):
+            for therm in range(2):
+                for cool in range(2):
+                    # Risiko-Score: Gewichtung der Faktoren
                     score = (age * 3) + (load * 4) + (therm * 5) + (cool * 6)
-                    
                     if score <= 2:   v = [0.98, 0.01, 0.01]
                     elif score <= 6: v = [0.70, 0.25, 0.05]
                     elif score <= 10:v = [0.30, 0.40, 0.30]
@@ -62,53 +57,44 @@ def get_engine():
                     else:            v = [0.01, 0.04, 0.95]
                     z_matrix.append(v)
     
-    cpd_state = TabularCPD(
-        variable='State', variable_card=3, values=np.array(z_matrix).T,
-        evidence=['Age', 'Load', 'Therm', 'Cool'], evidence_card=[3, 2, 2, 2]
-    )
+    cpd_state = TabularCPD('State', 3, np.array(z_matrix).T, ['Age', 'Load', 'Therm', 'Cool'], [3, 2, 2, 2])
     model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state)
     return VariableElimination(model)
 
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
-    st.session_state.twin = {
-        'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 
-        'active': False, 'broken': False, 't_current': 22.0, 
-        'seed': np.random.RandomState(42)
-    }
+    st.session_state.twin = {'cycle':0, 'wear':0.0, 'history':[], 'logs':[], 'active':False, 'broken':False, 't_current':22.0, 'seed':np.random.RandomState(42)}
 
 MATERIALIEN = {
     "Baustahl (S235JR)": {"kc1.1": 1900, "mc": 0.26, "wear_rate": 0.15, "temp_crit": 500},
     "Vergütungsstahl (42CrMo4)": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.2, "temp_crit": 550},
-    "Edelstahl (rostfrei 1.4404)": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.4, "temp_crit": 650},
-    "Titan-Legierung (hochfest)": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750},
-    "Inconel (Superlegierung)": {"kc1.1": 3400, "mc": 0.26, "wear_rate": 2.5, "temp_crit": 850}
+    "Edelstahl (1.4404)": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.4, "temp_crit": 650},
+    "Titan-Legierung": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750},
+    "Inconel": {"kc1.1": 3400, "mc": 0.26, "wear_rate": 2.5, "temp_crit": 850}
 }
 
-# --- 4. SIDEBAR (Eingabe) ---
+# --- 4. SIDEBAR ---
 with st.sidebar:
-    st.header("⚙️ Maschinen-Parameter")
-    mat_name = st.selectbox("Werkstoff wählen", list(MATERIALIEN.keys()))
+    st.header("⚙️ Parameter")
+    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
     mat = MATERIALIEN[mat_name]
     vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160)
     f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18)
     d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
     cooling = st.toggle("Kühlschmierung aktiv", value=True)
     st.divider()
-    st.subheader("⏱️ Simulations-Steuerung")
-    cycle_step = st.number_input("Schrittweite (Inkrement)", min_value=1, max_value=50, value=1)
+    cycle_step = st.number_input("Schrittweite", 1, 50, 1)
     sim_speed = st.select_slider("Verzögerung (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
     st.divider()
-    st.subheader("📡 Sensor-Gain")
     sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
     sens_vib = st.slider("Vibrations-Empfindlichkeit", 0.1, 5.0, 1.0)
 
-# --- 5. UPDATE LOGIK (Simulation & Inferenz) ---
+# --- 5. LOGIK ---
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
     
-    # Physik-Engine
+    # Physik
     fc = mat['kc1.1'] * (f** (1-mat['mc'])) * (d/2)
     mc_raw = (fc * d) / 2000 
     s['wear'] += ((mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 400)) * cycle_step
@@ -116,22 +102,18 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s['t_current'] += (target_t - s['t_current']) * 0.15
     amp = (((0.005 + (s['wear'] * 0.002)) * 10) + s['seed'].normal(0, 0.01)) * sens_vib
 
-    # KI-Klassifizierung (Diskretisierung für CPT)
+    # KI-Kategorisierung
     age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
     load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
     therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
     cool_cat = 0 if cooling else 1
 
-    # KI-Inferenz
     engine = get_engine()
-    risk = engine.query(['State'], evidence={
-        'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat
-    }).values[2]
+    risk = engine.query(['State'], evidence={'Age':age_cat, 'Load':load_cat, 'Therm':therm_cat, 'Cool':cool_cat}).values[2]
     
-    # Abbruchbedingung
     if risk > 0.98 or s['wear'] > 100: s['broken'] = True; s['active'] = False
     
-    # Klartext-Mapping für Logging (Explainable AI)
+    # XAI Logging
     age_txt = ["Neu", "Mittel", "Alt"][age_cat]
     load_txt = "HOCH" if load_cat == 1 else "Normal"
     therm_txt = "KRITISCH" if therm_cat == 1 else "Normal"
@@ -139,16 +121,9 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     
     zeit = time.strftime("%H:%M:%S")
     s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc_raw})
-    
-    # Formatiertes Log
-    log_entry = (
-        f"[{zeit}] ZYK {s['cycle']} (+{cycle_step}) | RISIKO: {risk:.1%} | "
-        f"Md: {mc_raw:.1f}Nm | Vib: {amp:.2f}mm/s\n"
-        f" ➔ KI-LOGIK: [Alter: {age_txt} | Last: {load_txt} | Temp: {therm_txt} | Kühlung: {cool_txt}]"
-    )
-    s['logs'].insert(0, log_entry)
+    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} (+{cycle_step}) | RISIKO: {risk:.1%} | Md: {mc_raw:.1f}Nm | Vib: {amp:.2f}mm/s\n ➔ KI-LOGIK: [Alter: {age_txt} | Last: {load_txt} | Temp: {therm_txt} | Kühlung: {cool_txt}]")
 
-# --- 6. DASHBOARD (Ausgabe) ---
+# --- 6. UI ---
 st.title("KI-ZWILLING | BOHRSYSTEM v21.8.2")
 col_metrics, col_main, col_logs = st.columns([1, 2, 1])
 
@@ -158,20 +133,17 @@ with col_metrics:
     st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
 
 with col_main:
-    # Regression für TTF
     ttf = "---"
     if len(st.session_state.twin['history']) > 3:
         df_calc = pd.DataFrame(st.session_state.twin['history'])
         z = np.polyfit(df_calc['c'], df_calc['w'], 1)
-        steigung = max(0.000001, z[0])
-        ttf = max(0, int((100 - st.session_state.twin['wear']) / steigung))
-        
-    st.markdown(f'<div class="predictive-card"><span class="val-title">🔮 Predictive Maintenance TTF</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Projizierte Zyklen bis Wartung</span></div>', unsafe_allow_html=True)
-
+        ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.000001, z[0])))
+    st.markdown(f'<div class="predictive-card"><span class="val-title">🔮 Predictive Maintenance TTF</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis Wartung</span></div>', unsafe_allow_html=True)
+    
     if len(st.session_state.twin['history']) > 0:
         df_p = pd.DataFrame(st.session_state.twin['history'])
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
-        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r']*100, fill='tozeroy', name="Bruchrisiko %", line=dict(color='#f85149')), row=1, col=1)
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r']*100, fill='tozeroy', name="Risiko %", line=dict(color='#f85149')), row=1, col=1)
         fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['mc'], name="Md [Nm]", line=dict(color='#58a6ff')), row=2, col=1)
         fig.update_layout(height=350, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0,r=0,t=0,b=0))
         st.plotly_chart(fig, use_container_width=True)
@@ -182,14 +154,10 @@ with col_logs:
     st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
 
 st.divider()
-c1, c2 = st.columns(2)
-if c1.button("▶ SIMULATION START / STOPP", use_container_width=True): 
-    st.session_state.twin['active'] = not st.session_state.twin['active']
-if c2.button("🔄 VOLLSTÄNDIGER RESET", use_container_width=True):
+if st.button("▶ START / STOPP", use_container_width=True): st.session_state.twin['active'] = not st.session_state.twin['active']
+if st.button("🔄 RESET", use_container_width=True):
     st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
     st.rerun()
 
 if st.session_state.twin['active']:
-    if sim_speed > 0:
-        time.sleep(sim_speed / 1000)
-    st.rerun()
+    time.sleep(sim_speed/1000); st.rerun()
