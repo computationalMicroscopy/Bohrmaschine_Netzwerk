@@ -1,62 +1,195 @@
-\documentclass[11pt,a4paper]{article}
-\usepackage[utf8]{inputenc}
-\usepackage[ngerman]{babel}
-\usepackage[T1]{fontenc}
-\usepackage{amsmath}
-\usepackage{amsfonts}
-\usepackage{amssymb}
-\usepackage{graphicx}
-\usepackage{booktabs}
-\usepackage{xcolor}
-\usepackage{geometry}
-\usepackage{enumitem}
-\usepackage{hyperref}
+import streamlit as st
+import pd
+import pandas as pd
+import numpy as np
+from pgmpy.models import DiscreteBayesianNetwork
+from pgmpy.factors.discrete import TabularCPD
+from pgmpy.inference import VariableElimination
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import time
 
-\geometry{margin=2.5cm}
+# --- 1. SETUP & DESIGN ---
+st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.8.2", page_icon="⚙️")
 
-\definecolor{darkblue}{rgb}{0.0, 0.0, 0.5}
-\definecolor{deepgreen}{rgb}{0.0, 0.5, 0.0}
+st.markdown("""
+    <style>
+    .stApp { background-color: #05070a; color: #e1e4e8; }
+    .glass-card {
+        background: rgba(23, 28, 36, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 15px; padding: 20px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(4px); margin-bottom: 15px;
+    }
+    .predictive-card {
+        background: linear-gradient(135deg, rgba(31, 111, 235, 0.2) 0%, rgba(5, 7, 10, 0.8) 100%);
+        border: 2px solid #58a6ff; border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px;
+    }
+    .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
+    .val-main { font-family: 'Inter', sans-serif; font-size: 2.8rem; font-weight: 800; margin: 5px 0; }
+    .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; text-shadow: 0 0 20px rgba(227, 179, 65, 0.4); }
+    .blue-glow { color: #58a6ff; text-shadow: 0 0 15px rgba(88, 166, 255, 0.5); }
+    .red-glow { color: #f85149; text-shadow: 0 0 15px rgba(248, 81, 73, 0.5); }
+    .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; height: 350px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; }
+    </style>
+    """, unsafe_allow_html=True)
 
-\title{\textbf{Schulungsunterlage: KI-Zwilling Bohrsystem v21.8.2}}
-\author{Industrie 4.0 Kompetenzzentrum | Condition Monitoring}
-\date{19. Januar 2026}
+# --- 2. KI-ENGINE (Mathematisch korrekte 24-Kombinationen CPT) ---
+@st.cache_resource
+def get_engine():
+    model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
+    
+    # Prior CPDs
+    cpd_age = TabularCPD('Age', 3, [[0.33], [0.33], [0.34]])
+    cpd_load = TabularCPD('Load', 2, [[0.8], [0.2]])
+    cpd_therm = TabularCPD('Therm', 2, [[0.9], [0.1]])
+    cpd_cool = TabularCPD('Cool', 2, [[0.95], [0.05]])
+    
+    # Systematische Generierung der CPT-Matrix (24 Zustände)
+    z_matrix = []
+    for age in range(3):        # 0:Neu, 1:Mittel, 2:Alt
+        for load in range(2):    # 0:Normal, 1:Hoch
+            for therm in range(2):# 0:Normal, 1:Hoch
+                for cool in range(2): # 0:Aktiv, 1:Inaktiv
+                    # Risiko-Gewichtung: Kühlung (6) > Thermik (5) > Last (4) > Alter (3)
+                    score = (age * 3) + (load * 4) + (therm * 5) + (cool * 6)
+                    
+                    if score <= 2:   v = [0.98, 0.01, 0.01]
+                    elif score <= 6: v = [0.70, 0.25, 0.05]
+                    elif score <= 10:v = [0.30, 0.40, 0.30]
+                    elif score <= 14:v = [0.10, 0.30, 0.60]
+                    else:            v = [0.01, 0.04, 0.95]
+                    z_matrix.append(v)
+    
+    cpd_state = TabularCPD(
+        variable='State', variable_card=3, values=np.array(z_matrix).T,
+        evidence=['Age', 'Load', 'Therm', 'Cool'], evidence_card=[3, 2, 2, 2]
+    )
+    model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state)
+    return VariableElimination(model)
 
-\begin{document}
+# --- 3. INITIALISIERUNG ---
+if 'twin' not in st.session_state:
+    st.session_state.twin = {
+        'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 
+        'active': False, 'broken': False, 't_current': 22.0, 
+        'seed': np.random.RandomState(42)
+    }
 
-\maketitle
+MATERIALIEN = {
+    "Baustahl (S235JR)": {"kc1.1": 1900, "mc": 0.26, "wear_rate": 0.15, "temp_crit": 500},
+    "Vergütungsstahl (42CrMo4)": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.2, "temp_crit": 550},
+    "Edelstahl (rostfrei 1.4404)": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.4, "temp_crit": 650},
+    "Titan-Legierung (hochfest)": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750},
+    "Inconel (Superlegierung)": {"kc1.1": 3400, "mc": 0.26, "wear_rate": 2.5, "temp_crit": 850}
+}
 
-\section{Live-Analyse und Explainable AI (XAI)}
-Die Software bietet im rechten Bereich ein Terminal, das die Entscheidungsfindung der KI transparent macht. Ein typischer Eintrag sieht wie folgt aus:
+# --- 4. SIDEBAR (Eingabe) ---
+with st.sidebar:
+    st.header("⚙️ Maschinen-Parameter")
+    mat_name = st.selectbox("Werkstoff wählen", list(MATERIALIEN.keys()))
+    mat = MATERIALIEN[mat_name]
+    vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160)
+    f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18)
+    d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
+    cooling = st.toggle("Kühlschmierung aktiv", value=True)
+    st.divider()
+    st.subheader("⏱️ Simulations-Steuerung")
+    cycle_step = st.number_input("Schrittweite (Inkrement)", min_value=1, max_value=50, value=1)
+    sim_speed = st.select_slider("Verzögerung (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
+    st.divider()
+    st.subheader("📡 Sensor-Gain")
+    sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
+    sens_vib = st.slider("Vibrations-Empfindlichkeit", 0.1, 5.0, 1.0)
 
-\begin{quote}
-\texttt{[14:20:05] ZYK 680 (+10) | RISIKO: 75.4\% | Md: 18.2Nm | Vib: 4.22mm/s \\
-➔ KI-LOGIK: [Alter: Alt | Last: HOCH | Temp: Normal | Kühlung: Aktiv]}
-\end{quote}
+# --- 5. UPDATE LOGIK (Simulation & Inferenz) ---
+if st.session_state.twin['active'] and not st.session_state.twin['broken']:
+    s = st.session_state.twin
+    s['cycle'] += cycle_step
+    
+    # Physik-Engine
+    fc = mat['kc1.1'] * (f** (1-mat['mc'])) * (d/2)
+    mc_raw = (fc * d) / 2000 
+    s['wear'] += ((mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 400)) * cycle_step
+    target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
+    s['t_current'] += (target_t - s['t_current']) * 0.15
+    amp = (((0.005 + (s['wear'] * 0.002)) * 10) + s['seed'].normal(0, 0.01)) * sens_vib
 
-Hierbei findet eine \textbf{Datenfusion} statt:
-\begin{enumerate}
-    \item \textbf{Messwerte:} Die kontinuierlichen Sensordaten (Nm, mm/s) werden angezeigt.
-    \item \textbf{Interpretation:} Die KI übersetzt diese Werte mittels Schwellenwerten in Kategorien (z.B. $M_d > \theta \rightarrow$ Last: HOCH).
-    \item \textbf{Inferenz:} Diese Kategorien triggern die entsprechende Zeile in der \textbf{CPT-Matrix} (Conditional Probability Table), um das Bruchrisiko zu berechnen.
-\end{enumerate}
+    # KI-Klassifizierung (Diskretisierung für CPT)
+    age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
+    load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
+    therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
+    cool_cat = 0 if cooling else 1
 
+    # KI-Inferenz
+    engine = get_engine()
+    risk = engine.query(['State'], evidence={
+        'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat
+    }).values[2]
+    
+    # Abbruchbedingung
+    if risk > 0.98 or s['wear'] > 100: s['broken'] = True; s['active'] = False
+    
+    # Klartext-Mapping für Logging (Explainable AI)
+    age_txt = ["Neu", "Mittel", "Alt"][age_cat]
+    load_txt = "HOCH" if load_cat == 1 else "Normal"
+    therm_txt = "KRITISCH" if therm_cat == 1 else "Normal"
+    cool_txt = "AUS" if cool_cat == 1 else "Aktiv"
+    
+    zeit = time.strftime("%H:%M:%S")
+    s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc_raw})
+    
+    # Formatiertes Log
+    log_entry = (
+        f"[{zeit}] ZYK {s['cycle']} (+{cycle_step}) | RISIKO: {risk:.1%} | "
+        f"Md: {mc_raw:.1f}Nm | Vib: {amp:.2f}mm/s\n"
+        f" ➔ KI-LOGIK: [Alter: {age_txt} | Last: {load_txt} | Temp: {therm_txt} | Kühlung: {cool_txt}]"
+    )
+    s['logs'].insert(0, log_entry)
 
+# --- 6. DASHBOARD (Ausgabe) ---
+st.title("KI-ZWILLING | BOHRSYSTEM v21.8.2")
+col_metrics, col_main, col_logs = st.columns([1, 2, 1])
 
-\section{Die korrigierte CPT-Logik (24 Zustände)}
-Das System berechnet das Risiko basierend auf 24 möglichen Merkmalskombinationen (3 Altersstufen $\times$ 2 Lastzustände $\times$ 2 Temperaturzustände $\times$ 2 Kühlungszustände).
+with col_metrics:
+    st.markdown(f'<div class="glass-card"><span class="val-title">Zyklus</span><br><span class="val-main blue-glow">{st.session_state.twin["cycle"]}</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{st.session_state.twin["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
 
-\begin{table}[h]
-    \centering
-    \begin{tabular}{ccc|ccc}
-        \toprule
-        \textbf{Last} & \textbf{Thermik} & \textbf{Kühlung} & \textbf{P(Kritisch) Neu} & \textbf{P(Kritisch) Alt} \\
-        \midrule
-        Normal & Normal & Aktiv & 1\% & 5\% \\
-        HOCH & Normal & Aktiv & 10\% & 40\% \\
-        HOCH & KRITISCH & AUS & 60\% & 95\% \\
-        \bottomrule
-    \end{tabular}
-    \caption{Auszug aus der gewichteten Inferenz-Matrix.}
-\end{table}
+with col_main:
+    # Regression für TTF
+    ttf = "---"
+    if len(st.session_state.twin['history']) > 3:
+        df_calc = pd.DataFrame(st.session_state.twin['history'])
+        z = np.polyfit(df_calc['c'], df_calc['w'], 1)
+        steigung = max(0.000001, z[0])
+        ttf = max(0, int((100 - st.session_state.twin['wear']) / steigung))
+        
+    st.markdown(f'<div class="predictive-card"><span class="val-title">🔮 Predictive Maintenance TTF</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Projizierte Zyklen bis Wartung</span></div>', unsafe_allow_html=True)
 
-\end{document}
+    if len(st.session_state.twin['history']) > 0:
+        df_p = pd.DataFrame(st.session_state.twin['history'])
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r']*100, fill='tozeroy', name="Bruchrisiko %", line=dict(color='#f85149')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['mc'], name="Md [Nm]", line=dict(color='#58a6ff')), row=2, col=1)
+        fig.update_layout(height=350, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0,r=0,t=0,b=0))
+        st.plotly_chart(fig, use_container_width=True)
+
+with col_logs:
+    st.markdown('<p class="val-title">Echtzeit-Analyse (XAI)</p>', unsafe_allow_html=True)
+    log_txt = "".join([f"<div style='margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:4px; color:#3fb950; font-family:monospace; line-height:1.2;'>{l}</div>" for l in st.session_state.twin['logs'][:40]])
+    st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
+
+st.divider()
+c1, c2 = st.columns(2)
+if c1.button("▶ SIMULATION START / STOPP", use_container_width=True): 
+    st.session_state.twin['active'] = not st.session_state.twin['active']
+if c2.button("🔄 VOLLSTÄNDIGER RESET", use_container_width=True):
+    st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
+    st.rerun()
+
+if st.session_state.twin['active']:
+    if sim_speed > 0:
+        time.sleep(sim_speed / 1000)
+    st.rerun()
