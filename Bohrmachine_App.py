@@ -9,59 +9,32 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & ULTRA-MODERN THEME ---
-st.set_page_config(layout="wide", page_title="AI Precision Twin v20.9 VISION", page_icon="💎")
+st.set_page_config(layout="wide", page_title="AI Precision Twin v21.0 PREDICTIVE", page_icon="🔮")
 
 st.markdown("""
     <style>
-    /* Globales Dark Theme */
     .stApp { background-color: #05070a; color: #e1e4e8; }
-    
-    /* Glasmorphismus Karten */
     .glass-card {
         background: rgba(23, 28, 36, 0.7);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 15px;
-        padding: 20px;
+        border-radius: 15px; padding: 20px;
         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
-        backdrop-filter: blur(4px);
-        margin-bottom: 15px;
+        backdrop-filter: blur(4px); margin-bottom: 15px;
     }
-    
-    /* Metrik Styling */
+    .predictive-card {
+        background: linear-gradient(135deg, rgba(31, 111, 235, 0.2) 0%, rgba(5, 7, 10, 0.8) 100%);
+        border: 2px solid #58a6ff; border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px;
+    }
     .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
-    .val-main { font-family: 'Inter', sans-serif; font-size: 2.8rem; font-weight: 800; margin: 10px 0; }
-    .unit { font-size: 1rem; color: #58a6ff; font-weight: 400; }
-    
-    /* Status Farben */
+    .val-main { font-family: 'Inter', sans-serif; font-size: 2.8rem; font-weight: 800; margin: 5px 0; }
+    .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; text-shadow: 0 0 20px rgba(227, 179, 65, 0.4); }
     .blue-glow { color: #58a6ff; text-shadow: 0 0 15px rgba(88, 166, 255, 0.5); }
     .red-glow { color: #f85149; text-shadow: 0 0 15px rgba(248, 81, 73, 0.5); }
-    .orange-glow { color: #d29922; text-shadow: 0 0 15px rgba(210, 153, 34, 0.5); }
-    .green-glow { color: #3fb950; text-shadow: 0 0 15px rgba(63, 185, 80, 0.5); }
-
-    /* Terminal Styling */
-    .terminal {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.8rem;
-        height: 400px;
-        background: #010409;
-        border-radius: 10px;
-        padding: 15px;
-        border: 1px solid #30363d;
-        color: #3fb950;
-        overflow-y: auto;
-    }
-    
-    /* Button Styling */
-    .stButton>button {
-        border-radius: 10px;
-        background: linear-gradient(135deg, #1f6feb 0%, #11438f 100%);
-        color: white; border: none; font-weight: bold; transition: 0.3s;
-    }
-    .stButton>button:hover { transform: scale(1.02); box-shadow: 0 0 20px rgba(31, 111, 235, 0.4); }
+    .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; height: 350px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. LOGIK-KERN (Unverändert stabil) ---
+# --- 2. LOGIK-KERN ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'seed': np.random.RandomState(42)}
 
@@ -89,30 +62,18 @@ def get_engine():
                    TabularCPD('Temp', 2, [[0.98, 0.3, 0.02], [0.02, 0.7, 0.98]], ['State'], [3]))
     return VariableElimination(model)
 
-# --- 3. SIDEBAR (Kontrolle & Glossar) ---
+# --- 3. SIDEBAR ---
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/000000/cpu.png", width=80)
     st.title("Vision Config")
-    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
+    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()), help="Beeinflusst kc1.1 und die Verschleißrate.")
     mat = MATERIALIEN[mat_name]
-    vc = st.slider("vc [m/min]", 20, 500, 160)
-    f = st.slider("f [mm/U]", 0.02, 1.0, 0.18)
+    vc = st.slider("vc [m/min]", 20, 500, 160, help="Schnittgeschwindigkeit (Hitze)")
+    f = st.slider("f [mm/U]", 0.02, 1.0, 0.18, help="Vorschub (Mechanische Last)")
     d = st.number_input("Ø Werkzeug [mm]", 1.0, 60.0, 12.0)
     cooling = st.toggle("Kühlsystem aktiv", value=True)
-    
-    st.markdown("---")
-    st.subheader("📡 Sensor Calibration")
+    st.divider()
     sens_vib = st.slider("Vibrations-Gain", 0.1, 5.0, 1.0)
     sens_load = st.slider("Last-Gain", 0.1, 5.0, 1.0)
-    
-    st.markdown("""
-    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.1);">
-    <b>📖 Info-Quicklinks:</b><br>
-    <b>vc:</b> Schnittgeschwindigkeit (Hitze-Treiber)<br>
-    <b>f:</b> Vorschub (Kraft-Treiber)<br>
-    <b>kc1.1:</b> Spez. Materialwiderstand
-    </div>
-    """, unsafe_allow_html=True)
 
 # --- 4. ENGINE RUN ---
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
@@ -130,68 +91,60 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
                                              'Load': 1 if mc_raw > ((d * 2.2) / sens_load) else 0,
                                              'Therm': 1 if s['t_current'] > mat['temp_crit'] else 0,
                                              'Cool': 0 if cooling else 1}).values[2]
-    if risk > 0.98: s['broken'] = True; s['active'] = False
+    if risk > 0.98 or s['wear'] > 100: s['broken'] = True; s['active'] = False
     s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc_raw})
-    s['logs'].insert(0, f"[{time.strftime('%H:%M:%S')}] CYC {s['cycle']} - Risk: {risk:.1%} - Load: {mc_raw:.1f}Nm")
+    s['logs'].insert(0, f"CYC {s['cycle']} | Status: {'OK' if risk < 0.5 else 'WARN'} | Wear: {s['wear']:.1f}%")
 
 # --- 5. VISUAL INTERFACE ---
-st.title("AI PRECISION TWIN | VISION ELITE")
+st.title("AI PRECISION TWIN | PREDICTIVE MONITORING")
 
-col_info, col_chart, col_log = st.columns([0.8, 2, 1])
+col_left, col_mid, col_right = st.columns([1, 2, 1])
 
-with col_info:
-    # Metriken in Glasmorphismus-Karten
+with col_left:
+    st.markdown(f'<div class="glass-card"><span class="val-title">Zyklus</span><br><span class="val-main blue-glow">{st.session_state.twin["cycle"]}</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{st.session_state.twin["t_current"]:.1f}°</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f}%</span></div>', unsafe_allow_html=True)
+
+with col_mid:
+    # --- PREDICTIVE MAINTENANCE CARD ---
+    if st.session_state.twin['history'] and len(st.session_state.twin['history']) > 5:
+        df = pd.DataFrame(st.session_state.twin['history'])
+        # Stabile Trendberechnung (linearer Fit über die letzten 10 Punkte)
+        recent = df.tail(10)
+        z = np.polyfit(recent['c'], recent['w'], 1)
+        slope = max(0.0001, z[0]) # Verschleiß pro Zyklus
+        remaining_cycles = int((100 - st.session_state.twin['wear']) / slope)
+        ttf = max(0, remaining_cycles)
+    else:
+        ttf = "---"
+
     st.markdown(f"""
-    <div class="glass-card">
-        <span class="val-title">Prozesszyklus</span><br>
-        <span class="val-main blue-glow">{st.session_state.twin['cycle']}</span>
-    </div>
-    <div class="glass-card">
-        <span class="val-title">Thermische Last</span><br>
-        <span class="val-main red-glow">{st.session_state.twin['t_current']:.1f}<span class="unit">°C</span></span>
-    </div>
-    <div class="glass-card">
-        <span class="val-title">Mechanische Last</span><br>
-        <span class="val-main orange-glow">{st.session_state.twin['history'][-1]['mc'] if st.session_state.twin['history'] else 0.0:.1f}<span class="unit">Nm</span></span>
-    </div>
-    <div class="glass-card">
-        <span class="val-title">Verschleißgrad</span><br>
-        <span class="val-main green-glow">{st.session_state.twin['wear']:.1f}<span class="unit">%</span></span>
+    <div class="predictive-card">
+        <span class="val-title" style="color:#58a6ff">🔮 Voraussichtliche Restlaufzeit (TTF)</span><br>
+        <div class="ttf-val">{ttf}</div>
+        <span class="val-title">Zyklen bis Wartung erforderlich</span>
     </div>
     """, unsafe_allow_html=True)
 
-with col_chart:
     if st.session_state.twin['history']:
-        df = pd.DataFrame(st.session_state.twin['history'])
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08)
-        
-        # Bruchrisiko Chart
-        fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, fill='tozeroy', name="KI-Risiko", line=dict(color='#f85149', width=4)), row=1, col=1)
-        # Sensorik Chart
-        fig.add_trace(go.Scatter(x=df['c'], y=df['mc'], name="Last Nm", line=dict(color='#d29922', width=2)), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['c'], y=df['amp']*1000, name="Vibration", line=dict(color='#3fb950', width=2)), row=2, col=1)
-        
-        fig.update_layout(height=580, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-                          margin=dict(l=0,r=0,t=0,b=0), legend=dict(orientation="h", y=1.05))
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
+        fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, fill='tozeroy', name="Bruchrisiko %", line=dict(color='#f85149')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['c'], y=df['mc'], name="Last Nm", line=dict(color='#58a6ff')), row=2, col=1)
+        fig.update_layout(height=400, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0,r=0,t=0,b=0))
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("System bereit. Drücken Sie Start für die Echtzeit-Telemetrie.")
 
-with col_log:
-    st.markdown('<p class="val-title">Machine Analytics Stream</p>', unsafe_allow_html=True)
-    log_html = "".join([f"<div style='margin-bottom:5px;'>{l}</div>" for l in st.session_state.twin['logs'][:50]])
-    st.markdown(f'<div class="terminal">{log_html}</div>', unsafe_allow_html=True)
+with col_right:
+    st.markdown('<p class="val-title">Live Analytics Stream</p>', unsafe_allow_html=True)
+    log_txt = "".join([f"<div style='margin-bottom:4px;'>{l}</div>" for l in st.session_state.twin['logs'][:60]])
+    st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
 
-# Footer Controls
-st.markdown("<br>", unsafe_allow_html=True)
-c1, c2, c3 = st.columns([1,1,1])
-with c1:
-    if st.button("▶ START / STOP SYSTEM", use_container_width=True): 
-        st.session_state.twin['active'] = not st.session_state.twin['active']
-with c2:
-    if st.button("🔄 VOLLSTÄNDIGER RESET", use_container_width=True):
-        st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
-        st.rerun()
+# Footer
+st.divider()
+c1, c2 = st.columns(2)
+if c1.button("▶ START / STOP SYSTEM", use_container_width=True): st.session_state.twin['active'] = not st.session_state.twin['active']
+if c2.button("🔄 VOLLSTÄNDIGER RESET", use_container_width=True):
+    st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
+    st.rerun()
 
 if st.session_state.twin['active']:
     time.sleep(0.05)
