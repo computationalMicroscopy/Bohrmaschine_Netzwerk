@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 
-# --- 1. SETUP & DESIGN (Wiederhergestellt auf v21.7) ---
-st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.8", page_icon="⚙️")
+# --- 1. SETUP & DESIGN ---
+st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.8.1", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -34,26 +34,21 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-ENGINE (Detaillierte CPT-Logik für 24 Kombinationen) ---
+# --- 2. KI-ENGINE (Präzise 24-Kombinationen CPT) ---
 @st.cache_resource
 def get_engine():
     model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
-    
-    # Prior CPDs
     cpd_age = TabularCPD('Age', 3, [[0.33], [0.33], [0.34]])
     cpd_load = TabularCPD('Load', 2, [[0.8], [0.2]])
     cpd_therm = TabularCPD('Therm', 2, [[0.9], [0.1]])
     cpd_cool = TabularCPD('Cool', 2, [[0.95], [0.05]])
     
-    # Systematische Generierung der 24 Merkmalskombinationen
     z_matrix = []
-    for age in range(3):        # 0:Neu, 1:Mittel, 2:Alt
-        for load in range(2):    # 0:Normal, 1:Hoch
-            for therm in range(2):# 0:Normal, 1:Hoch
-                for cool in range(2): # 0:Aktiv, 1:Inaktiv
-                    # Risiko-Score Gewichtung
+    for age in range(3):
+        for load in range(2):
+            for therm in range(2):
+                for cool in range(2):
                     score = (age * 3) + (load * 4) + (therm * 5) + (cool * 6)
-                    # Mapping auf [Gut, Verschlissen, Kritisch]
                     if score <= 2:   v = [0.98, 0.01, 0.01]
                     elif score <= 6: v = [0.70, 0.25, 0.05]
                     elif score <= 10:v = [0.30, 0.40, 0.30]
@@ -61,10 +56,7 @@ def get_engine():
                     else:            v = [0.01, 0.04, 0.95]
                     z_matrix.append(v)
     
-    cpd_state = TabularCPD(
-        variable='State', variable_card=3, values=np.array(z_matrix).T,
-        evidence=['Age', 'Load', 'Therm', 'Cool'], evidence_card=[3, 2, 2, 2]
-    )
+    cpd_state = TabularCPD('State', 3, np.array(z_matrix).T, ['Age', 'Load', 'Therm', 'Cool'], [3, 2, 2, 2])
     model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state)
     return VariableElimination(model)
 
@@ -84,7 +76,7 @@ MATERIALIEN = {
     "Inconel (Superlegierung)": {"kc1.1": 3400, "mc": 0.26, "wear_rate": 2.5, "temp_crit": 850}
 }
 
-# --- 4. SIDEBAR (Eingabe) ---
+# --- 4. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Maschinen-Parameter")
     mat_name = st.selectbox("Werkstoff wählen", list(MATERIALIEN.keys()))
@@ -95,25 +87,27 @@ with st.sidebar:
     cooling = st.toggle("Kühlschmierung aktiv", value=True)
     st.divider()
     st.subheader("⏱️ Simulations-Steuerung")
-    cycle_step = st.number_input("Schrittweite (Zyklen pro Sprung)", min_value=1, max_value=50, value=1)
+    cycle_step = st.number_input("Schrittweite (Inkrement)", min_value=1, max_value=50, value=1)
     sim_speed = st.select_slider("Verzögerung (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
     st.divider()
+    st.subheader("📡 Sensor-Gain")
     sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
+    sens_vib = st.slider("Vibrations-Empfindlichkeit", 0.1, 5.0, 1.0)
 
-# --- 5. LOGIK (Update) ---
+# --- 5. UPDATE LOGIK ---
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
     
-    # Physik-Berechnung
+    # Physik
     fc = mat['kc1.1'] * (f** (1-mat['mc'])) * (d/2)
     mc_raw = (fc * d) / 2000 
     s['wear'] += ((mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 400)) * cycle_step
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.15
-    amp = ((0.005 + (s['wear'] * 0.002)) * 10) + s['seed'].normal(0, 0.01)
+    amp = (((0.005 + (s['wear'] * 0.002)) * 10) + s['seed'].normal(0, 0.01)) * sens_vib
 
-    # KI-Inferenz (Kategoriales Mapping)
+    # KI-Kategorisierung
     age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
     load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
     therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
@@ -123,11 +117,13 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     risk = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
     
     if risk > 0.98 or s['wear'] > 100: s['broken'] = True; s['active'] = False
+    
+    zeit = time.strftime("%H:%M:%S")
     s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc_raw})
-    s['logs'].insert(0, f"ZYK {s['cycle']} (+{cycle_step}) | Risiko: {risk:.1%} | Evidenz: A:{age_cat} L:{load_cat} T:{therm_cat} C:{cool_cat}")
+    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} (+{cycle_step}) | Risiko: {risk:.1%} | Md: {mc_raw:.1f} Nm | Vib: {amp:.2f} mm/s | Evid: A{age_cat}L{load_cat}T{therm_cat}C{cool_cat}")
 
-# --- 6. DASHBOARD (Ausgabe) ---
-st.title("KI-ZWILLING | BOHRSYSTEM v21.8")
+# --- 6. UI ---
+st.title("KI-ZWILLING | BOHRSYSTEM v21.8.1")
 col_metrics, col_main, col_logs = st.columns([1, 2, 1])
 
 with col_metrics:
@@ -153,7 +149,7 @@ with col_main:
         st.plotly_chart(fig, use_container_width=True)
 
 with col_logs:
-    st.markdown('<p class="val-title">Live-Analyse</p>', unsafe_allow_html=True)
+    st.markdown('<p class="val-title">Live-Analyse (Echtzeit)</p>', unsafe_allow_html=True)
     log_txt = "".join([f"<div style='margin-bottom:6px; border-bottom:1px solid #30363d; color:#3fb950; font-family:monospace;'>{l}</div>" for l in st.session_state.twin['logs'][:50]])
     st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
 
