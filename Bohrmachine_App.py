@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. INDUSTRIAL DASHBOARD SETUP ---
-st.set_page_config(layout="wide", page_title="AI Precision Twin v20", page_icon="🔩")
+st.set_page_config(layout="wide", page_title="AI Precision Twin v20.1", page_icon="🔩")
 
 st.markdown("""
     <style>
@@ -24,7 +24,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. MATERIAL-DATENBANK (PROFI-WERTE) ---
+# --- 2. MATERIAL-DATENBANK ---
 MATERIALIEN = {
     "Alu (G-AlSi10Mg)": {"kc1.1": 700, "mc": 0.2, "wear_rate": 0.01, "temp_crit": 150},
     "Stahl (42CrMo4)": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.2, "temp_crit": 550},
@@ -79,7 +79,7 @@ with st.sidebar:
     mat = MATERIALIEN[mat_name]
     
     with st.expander("Prozessdaten (CAM)", expanded=True):
-        vc = st.slider("vc - Schnittgeschwindigkeit [m/min]", 20, 500, 160)
+        vc = st.slider("vc - Geschwindigkeit [m/min]", 20, 500, 160)
         f = st.slider("f - Vorschub [mm/U]", 0.02, 1.0, 0.18)
         d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
         cooling = st.toggle("Kühlschmierung", value=True)
@@ -120,22 +120,51 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc})
     s['logs'].insert(0, f"CYC {s['cycle']:04d} | Md: {mc:.2f}Nm | Risk: {risk:.2%}")
 
-# --- 7. UI ---
-st.title("🔩 Industrial Digital Twin: Drilling Analytics")
+# --- 7. UI MIT OPTIMIERTEM RISIKO-GRAPHEN ---
+st.title("🔩 Industrial Digital Twin: Drilling Analytics 20.1")
 
 c_main, c_risk = st.columns([1, 2])
 with c_main:
-    st.markdown(f'<div class="metric-container"><span class="sub-label">Aktueller Zyklus</span><br><div class="main-cycle">{st.session_state.twin["cycle"]}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-container"><span class="sub-label">Bohrzyklus</span><br><div class="main-cycle">{st.session_state.twin["cycle"]}</div></div>', unsafe_allow_html=True)
 with c_risk:
     if st.session_state.twin['history']:
         df = pd.DataFrame(st.session_state.twin['history'])
-        fig_r = go.Figure(go.Scatter(x=df['c'], y=df['r']*100, fill='tozeroy', name="Bruch-Risiko (%)", line=dict(color='#ff4b4b', width=3)))
-        fig_r.update_layout(height=180, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)')
+        
+        # Profi-Risiko Graph
+        fig_r = go.Figure()
+        
+        # Farbdynamik basierend auf dem Risiko-Level
+        current_risk = df['r'].iloc[-1]
+        line_color = '#3fb950' if current_risk < 0.5 else ('#d29922' if current_risk < 0.8 else '#f85149')
+        
+        fig_r.add_trace(go.Scatter(
+            x=df['c'], y=df['r']*100,
+            fill='tozeroy',
+            fillcolor=f'rgba({248 if current_risk > 0.8 else (210 if current_risk > 0.5 else 63)}, {81 if current_risk > 0.8 else (153 if current_risk > 0.5 else 185)}, {73 if current_risk > 0.8 else (34 if current_risk > 0.5 else 80)}, 0.3)',
+            line=dict(color=line_color, width=3),
+            name="Bruch-Risiko",
+            hoverinfo='y+x',
+            mode='lines'
+        ))
+        
+        # Warnschwellen
+        fig_r.add_hline(y=50, line_dash="dash", line_color="#d29922", annotation_text="Warnung", annotation_position="top left")
+        fig_r.add_hline(y=80, line_dash="dash", line_color="#f85149", annotation_text="KRITISCH", annotation_position="top left")
+
+        fig_r.update_layout(
+            height=200, 
+            template="plotly_dark", 
+            margin=dict(l=0,r=0,t=20,b=0), 
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            yaxis=dict(range=[0, 100], title="Risiko %", gridcolor='#30363d'),
+            xaxis=dict(showgrid=False)
+        )
         st.plotly_chart(fig_r, use_container_width=True)
 
+# Sensoren-Anzeige
 m1, m2, m3, m4 = st.columns(4)
 last = st.session_state.twin['history'][-1] if st.session_state.twin['history'] else {'w':0,'amp':0,'t':22,'mc':0}
-
 with m1: st.markdown(f'<div class="metric-container"><span class="sub-label">Amplitude</span><br><span style="font-size:1.5rem; font-weight:bold; color:#58a6ff">{last["amp"]:.4f} mm</span></div>', unsafe_allow_html=True)
 with m2: st.markdown(f'<div class="metric-container"><span class="sub-label">Drehmoment</span><br><span style="font-size:1.5rem; font-weight:bold; color:#58a6ff">{last["mc"]:.2f} Nm</span></div>', unsafe_allow_html=True)
 with m3: st.markdown(f'<div class="metric-container"><span class="sub-label">Temperatur</span><br><span style="font-size:1.5rem; font-weight:bold; color:#58a6ff">{last["t"]:.1f} °C</span></div>', unsafe_allow_html=True)
@@ -147,9 +176,9 @@ g_left, g_right = st.columns([2, 1])
 with g_left:
     if st.session_state.twin['history']:
         fig = make_subplots(specs=[[{"secondary_y": True}]])
-        fig.add_trace(go.Scatter(x=df['c'], y=df['mc'], name="Drehmoment (Nm)"))
-        fig.add_trace(go.Scatter(x=df['c'], y=df['t'], name="Temperatur (°C)"), secondary_y=True)
-        fig.update_layout(height=450, template="plotly_dark")
+        fig.add_trace(go.Scatter(x=df['c'], y=df['mc'], name="Drehmoment (Nm)", line=dict(color='#58a6ff')))
+        fig.add_trace(go.Scatter(x=df['c'], y=df['t'], name="Temperatur (°C)", line=dict(color='#f85149')), secondary_y=True)
+        fig.update_layout(height=450, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
 
 with g_right:
@@ -157,6 +186,7 @@ with g_right:
     if st.button("🔄 SYSTEM-RESET", use_container_width=True):
         st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
         st.rerun()
+    if st.session_state.twin['broken']: st.error("WERKZEUGBRUCH!")
     log_content = "".join([f"<div>{l}</div>" for l in st.session_state.twin['logs'][:50]])
     st.markdown(f'<div class="log-terminal">{log_content}</div>', unsafe_allow_html=True)
 
