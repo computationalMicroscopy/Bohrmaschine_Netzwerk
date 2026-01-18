@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -9,8 +8,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 
-# --- 1. SETUP & DESIGN (MODERN DARK THEME) ---
-st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.6", page_icon="⚙️")
+# --- 1. SETUP & DESIGN ---
+st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.7", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -35,7 +34,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. INITIALISIERUNG DES SYSTEMS ---
+# --- 2. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {
         'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 
@@ -43,7 +42,6 @@ if 'twin' not in st.session_state:
         'seed': np.random.RandomState(42)
     }
 
-# MATERIALIEN MIT SPRECHENDEN DEUTSCHEN NAMEN
 MATERIALIEN = {
     "Baustahl (S235JR)": {"kc1.1": 1900, "mc": 0.26, "wear_rate": 0.15, "temp_crit": 500},
     "Vergütungsstahl (42CrMo4)": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.2, "temp_crit": 550},
@@ -87,8 +85,10 @@ with st.sidebar:
     cooling = st.toggle("Kühlschmierung aktiv", value=True)
     
     st.divider()
-    st.subheader("⏱️ Simulationstakt")
-    sim_speed = st.select_slider("Verzögerung pro Zyklus (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
+    st.subheader("⏱️ Simulations-Steuerung")
+    # NEU: INKREMENT-EINSTELLUNG
+    cycle_step = st.number_input("Schrittweite (Zyklen pro Sprung)", min_value=1, max_value=50, value=1, help="Erhöht den aktuellen Zyklus pro Iteration um diesen Wert.")
+    sim_speed = st.select_slider("Verzögerung (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
     
     st.divider()
     st.subheader("📡 Sensor-Gain")
@@ -98,22 +98,24 @@ with st.sidebar:
 # --- 4. KERNLOGIK (SIMULATION & KI) ---
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
-    s['cycle'] += 1
     
-    # PHYSIK-MODELLE (Kienzle-Formel für Drehmoment Md)
+    # Zyklus-Inkrement anwenden
+    s['cycle'] += cycle_step
+    
+    # PHYSIK-MODELLE
     fc = mat['kc1.1'] * (f** (1-mat['mc'])) * (d/2)
-    mc_raw = (fc * d) / 2000 # Moment in Nm
+    mc_raw = (fc * d) / 2000 
     
-    wear_inc = (mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 400)
+    # Verschleiß wird entsprechend der Schrittweite multipliziert
+    wear_inc = ((mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 400)) * cycle_step
     s['wear'] += wear_inc
     
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.15
     
-    # Vibration: Schwinggeschwindigkeit v_rms in mm/s
     amp = ((0.005 + (s['wear'] * 0.002)) * sens_vib * 10) + s['seed'].normal(0, 0.01) * sens_vib
     
-    # KI-INFERENZ (Bayesian Network)
+    # KI-INFERENZ
     engine = get_engine()
     risk = engine.query(['State'], evidence={
         'Age': 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2),
@@ -124,12 +126,10 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     
     if risk > 0.98 or s['wear'] > 100: s['broken'] = True; s['active'] = False
     
-    # Datenspeicherung
     s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc_raw})
     
-    # Protokoll-Eintrag
     zeit = time.strftime("%H:%M:%S")
-    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} | Risiko: {risk:.1%} | Drehmoment (Md): {mc_raw:.1f} Nm | Vibration: {amp:.2f} mm/s")
+    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} (+{cycle_step}) | Risiko: {risk:.1%} | Md: {mc_raw:.1f} Nm | Vib: {amp:.2f} mm/s")
 
 # --- 5. DASHBOARD OBERFLÄCHE ---
 st.title("KI-ZWILLING | PRÄZISIONS-ÜBERWACHUNG")
@@ -142,7 +142,6 @@ with col_metrics:
     st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
 
 with col_main:
-    # PREDICTIVE MAINTENANCE (TTF Berechnung)
     ttf = "---"
     if len(st.session_state.twin['history']) > 3:
         df_calc = pd.DataFrame(st.session_state.twin['history'])
@@ -152,7 +151,6 @@ with col_main:
 
     st.markdown(f'<div class="predictive-card"><span class="val-title" style="color:#58a6ff">🔮 Voraussichtliche Restlaufzeit (TTF)</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis Wartung erforderlich</span></div>', unsafe_allow_html=True)
 
-    # Diagramme (nur wenn Daten vorhanden sind)
     if len(st.session_state.twin['history']) > 0:
         df_p = pd.DataFrame(st.session_state.twin['history'])
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
@@ -160,15 +158,12 @@ with col_main:
         fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['mc'], name="Drehmoment Md [Nm]", line=dict(color='#58a6ff')), row=2, col=1)
         fig.update_layout(height=400, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0,r=0,t=0,b=0))
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("System im Leerlauf. Klicken Sie auf Start für Live-Analysen.")
 
 with col_logs:
     st.markdown('<p class="val-title">Live-Analyse-Protokoll</p>', unsafe_allow_html=True)
     log_txt = "".join([f"<div style='margin-bottom:6px; border-bottom:1px solid #30363d; padding-bottom:2px; color:#3fb950; font-family:monospace;'>{l}</div>" for l in st.session_state.twin['logs'][:60]])
     st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
 
-# --- 6. STEUERUNG ---
 st.divider()
 c1, c2 = st.columns(2)
 if c1.button("▶ SIMULATION START / STOPP", use_container_width=True): 
