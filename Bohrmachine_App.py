@@ -9,18 +9,18 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & INDUSTRIAL THEME ---
-st.set_page_config(layout="wide", page_title="AI Precision Twin v20.1 STABLE", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="AI Precision Twin v20.6 Telemetry", page_icon="⚖️")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0d1117; color: #c9d1d9; }
-    .metric-container { 
-        background-color: #161b22; border-left: 5px solid #58a6ff; 
-        border-radius: 8px; padding: 15px; margin: 5px;
+    .metric-card { 
+        background-color: #161b22; border-left: 4px solid #58a6ff; 
+        border-radius: 6px; padding: 12px; margin-bottom: 10px;
     }
-    .main-cycle { font-family: 'JetBrains Mono', monospace; font-size: 3rem; color: #79c0ff; font-weight: 800; }
-    .sub-label { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
-    .log-terminal { font-family: 'Consolas', monospace; font-size: 0.8rem; height: 300px; overflow-y: auto; background: #010409; padding: 15px; border: 1px solid #30363d; border-radius: 5px; }
+    .main-val { font-family: 'JetBrains Mono', monospace; font-size: 2.2rem; color: #79c0ff; font-weight: 700; }
+    .sub-label { font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+    .log-terminal { font-family: 'Consolas', monospace; font-size: 0.75rem; height: 350px; overflow-y: auto; background: #010409; padding: 10px; border: 1px solid #30363d; border-radius: 4px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -31,7 +31,7 @@ if 'twin' not in st.session_state:
         't_current': 22.0, 'seed': np.random.RandomState(42)
     }
 
-# --- 3. KI-KERN & PHYSIK ---
+# --- 3. KI-KERN (BAYES) ---
 MATERIALIEN = {
     "Stahl (42CrMo4)": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.2, "temp_crit": 550},
     "Edelstahl (1.4404)": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.4, "temp_crit": 650},
@@ -45,7 +45,6 @@ def get_engine():
         ('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State'),
         ('State', 'Amp'), ('State', 'Temp')
     ])
-    # Definition der bedingten Wahrscheinlichkeiten (CPTs)
     cpds = [
         TabularCPD('Age', 3, [[0.33], [0.33], [0.34]]),
         TabularCPD('Load', 2, [[0.8], [0.2]]),
@@ -68,23 +67,23 @@ def get_engine():
     )
     return VariableElimination(model)
 
-# --- 4. SIDEBAR CONTROLS ---
+# --- 4. SIDEBAR ---
 with st.sidebar:
-    st.header("⚙️ Konfiguration")
+    st.header("⚙️ Maschinen-Setup")
     mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
     mat = MATERIALIEN[mat_name]
-    vc = st.slider("vc [m/min]", 20, 500, 160)
-    f = st.slider("f [mm/U]", 0.02, 1.0, 0.18)
+    vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160)
+    f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18)
     d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
-    cooling = st.toggle("Kühlung aktiv", value=True)
-    sim_speed = st.select_slider("Sim-Speed", options=[100, 50, 10, 0], value=50)
+    cooling = st.toggle("Kühlschmierung", value=True)
+    sim_speed = st.select_slider("Abtastrate (ms)", options=[100, 50, 10, 0], value=50)
 
-# --- 5. CALCULATION ---
+# --- 5. BERECHNUNG ---
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += 1
     
-    # Physik-Modell (Kienzle)
+    # Physikalische Sensor-Simulation
     fc = mat['kc1.1'] * (f** (1-mat['mc'])) * (d/2)
     mc = (fc * d) / 2000
     wear_inc = (mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 400)
@@ -92,9 +91,11 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.15
-    amp = (0.005 + (s['wear'] * 0.003)) * (1 + s['seed'].normal(0, 0.1))
+    # Sensor-Vibration (Amplitude)
+    noise = s['seed'].normal(0, 0.001)
+    amp = (0.005 + (s['wear'] * 0.002)) + noise
     
-    # Bayessche Inferenz
+    # KI-Inferenz
     engine = get_engine()
     risk = engine.query(['State'], evidence={
         'Age': 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2),
@@ -106,33 +107,44 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     if risk > 0.98: s['broken'] = True; s['active'] = False
     
     s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc})
-    s['logs'].insert(0, f"CYC {s['cycle']:03d} | Risk: {risk:.1%} | Md: {mc:.2f}Nm")
+    s['logs'].insert(0, f"CYC {s['cycle']:03d} | Risk: {risk:.1%} | Amp: {amp:.4f} | Md: {mc:.1f}Nm")
 
 # --- 6. DASHBOARD ---
-st.title("Industrial Precision Twin v20.1 (Stable Core)")
+st.title("Industrial Precision Twin v20.6: Full Telemetry")
 
-c_main, c_logs = st.columns([2, 1])
+col_metrics, col_graph, col_logs = st.columns([0.6, 1.8, 1.0])
 
-with c_logs:
-    st.markdown('<p class="sub-label">System Log</p>', unsafe_allow_html=True)
-    log_content = "".join([f"<div>{l}</div>" for l in st.session_state.twin['logs'][:50]])
-    st.markdown(f'<div class="log-terminal">{log_content}</div>', unsafe_allow_html=True)
+with col_metrics:
+    st.markdown(f'<div class="metric-card"><span class="sub-label">Zyklus</span><br><div class="main-val">{st.session_state.twin["cycle"]}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><span class="sub-label">Temperatur</span><br><div class="main-val" style="color:#f85149">{st.session_state.twin["t_current"]:.1f}°C</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><span class="sub-label">Drehmoment</span><br><div class="main-val" style="color:#58a6ff">{st.session_state.twin["history"][-1]["mc"] if st.session_state.twin["history"] else 0.0:.1f}Nm</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><span class="sub-label">Vibration (RMS)</span><br><div class="main-val" style="color:#3fb950">{st.session_state.twin["history"][-1]["amp"] if st.session_state.twin["history"] else 0.0:.4f}</div></div>', unsafe_allow_html=True)
 
-with c_main:
-    m1, m2, m3 = st.columns(3)
-    m1.markdown(f'<div class="metric-container"><span class="sub-label">Zyklus</span><br><div class="main-cycle">{st.session_state.twin["cycle"]}</div></div>', unsafe_allow_html=True)
-    m2.markdown(f'<div class="metric-container"><span class="sub-label">Temp (°C)</span><br><div class="main-cycle" style="color:#f85149">{st.session_state.twin["t_current"]:.1f}</div></div>', unsafe_allow_html=True)
-    m3.markdown(f'<div class="metric-container"><span class="sub-label">Verschleiß (%)</span><br><div class="main-cycle" style="color:#e3b341">{st.session_state.twin["wear"]:.1f}</div></div>', unsafe_allow_html=True)
-    
+with col_graph:
     if st.session_state.twin['history']:
         df = pd.DataFrame(st.session_state.twin['history'])
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, fill='tozeroy', name="Bruchrisiko %", line=dict(color='#f85149', width=3)))
-        fig.update_layout(height=380, template="plotly_dark", margin=dict(l=0,r=0,t=20,b=0), paper_bgcolor='rgba(0,0,0,0)')
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, subplot_titles=("KI-Bruchrisiko (%)", "Sensor-Telemetrie (Last & Vibration)"))
+        
+        # Oben: KI Risiko
+        fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, fill='tozeroy', name="Risiko", line=dict(color='#f85149')), row=1, col=1)
+        
+        # Unten: Sensoren
+        fig.add_trace(go.Scatter(x=df['c'], y=df['mc'], name="Drehmoment", line=dict(color='#58a6ff')), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df['c'], y=df['amp']*1000, name="Vibration (x1k)", line=dict(color='#3fb950')), row=2, col=1)
+        
+        fig.update_layout(height=550, template="plotly_dark", margin=dict(l=0,r=0,t=30,b=0), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig, use_container_width=True)
 
-if st.button("▶️ START / STOP", use_container_width=True): st.session_state.twin['active'] = not st.session_state.twin['active']
-if st.button("🔄 FULL RESET", use_container_width=True):
+with col_logs:
+    st.markdown('<p class="sub-label">Realtime Sensor Logs</p>', unsafe_allow_html=True)
+    log_content = "".join([f"<div>{l}</div>" for l in st.session_state.twin['logs'][:100]])
+    st.markdown(f'<div class="log-terminal">{log_content}</div>', unsafe_allow_html=True)
+
+# Controls
+st.divider()
+c1, c2 = st.columns(2)
+if c1.button("▶️ START / STOP PROZESS", use_container_width=True): st.session_state.twin['active'] = not st.session_state.twin['active']
+if c2.button("🔄 SYSTEM-RESET", use_container_width=True):
     st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
     st.rerun()
 
