@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & THEME ---
-st.set_page_config(layout="wide", page_title="AI Precision Twin v21.2", page_icon="🔮")
+st.set_page_config(layout="wide", page_title="AI Precision Twin v21.3", page_icon="🔮")
 
 st.markdown("""
     <style>
@@ -82,7 +82,14 @@ with st.sidebar:
     f = st.slider("f [mm/U]", 0.02, 1.0, 0.18)
     d = st.number_input("Ø Bohrwerkzeug [mm]", 1.0, 60.0, 12.0)
     cooling = st.toggle("Kühlschmierung aktiv", value=True)
+    
     st.divider()
+    st.subheader("Simulations-Takt")
+    # Geschwindigkeitsregler wieder aktiviert
+    sim_speed = st.select_slider("Verzögerung pro Zyklus (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
+    
+    st.divider()
+    st.subheader("Sensorempfindlichkeit")
     sens_vib = st.slider("Vibrations-Gain", 0.1, 5.0, 1.0)
     sens_load = st.slider("Last-Gain", 0.1, 5.0, 1.0)
 
@@ -111,10 +118,10 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     if risk > 0.98 or s['wear'] > 100: s['broken'] = True; s['active'] = False
     
     s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc_raw})
-    s['logs'].insert(0, f"CYC {s['cycle']} | Risk: {risk:.1%} | Wear: {s['wear']:.1f}%")
+    s['logs'].insert(0, f"CYC {s['cycle']} | TTF-Trend stabilisiert...")
 
 # --- 5. UI ---
-st.title("AI PRECISION TWIN | PREDICTIVE")
+st.title("AI PRECISION TWIN | CONTROL")
 
 col_left, col_mid, col_right = st.columns([1, 2, 1])
 
@@ -125,7 +132,7 @@ with col_left:
 
 with col_mid:
     # PREDICTIVE CALC
-    ttf = "READY"
+    ttf = "---"
     if len(st.session_state.twin['history']) > 3:
         df_calc = pd.DataFrame(st.session_state.twin['history'])
         z = np.polyfit(df_calc['c'], df_calc['w'], 1)
@@ -134,7 +141,6 @@ with col_mid:
 
     st.markdown(f'<div class="predictive-card"><span class="val-title" style="color:#58a6ff">🔮 Restlaufzeit (TTF)</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis Wartung</span></div>', unsafe_allow_html=True)
 
-    # DIAGRAMM-SCHUTZ: Nur zeichnen, wenn Daten da sind
     if len(st.session_state.twin['history']) > 0:
         df_plot = pd.DataFrame(st.session_state.twin['history'])
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
@@ -142,8 +148,6 @@ with col_mid:
         fig.add_trace(go.Scatter(x=df_plot['c'], y=df_plot['mc'], name="Last Nm", line=dict(color='#58a6ff')), row=2, col=1)
         fig.update_layout(height=400, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0,r=0,t=0,b=0))
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("System im Leerlauf. Starten Sie den Prozess für Live-Daten.")
 
 with col_right:
     st.markdown('<p class="val-title">Analytics Stream</p>', unsafe_allow_html=True)
@@ -157,6 +161,8 @@ if c2.button("🔄 RESET", use_container_width=True):
     st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
     st.rerun()
 
+# --- RE-RUN LOGIK MIT VARIABLEM SLEEP ---
 if st.session_state.twin['active']:
-    time.sleep(0.05)
+    if sim_speed > 0:
+        time.sleep(sim_speed / 1000)
     st.rerun()
