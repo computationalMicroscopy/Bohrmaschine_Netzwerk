@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 
-# --- 1. SETUP & THEME ---
-st.set_page_config(layout="wide", page_title="AI Precision Twin v21.3", page_icon="🔮")
+# --- 1. SETUP & DESIGN ---
+st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.4", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -73,31 +73,31 @@ def get_engine():
     )
     return VariableElimination(model)
 
-# --- 3. SIDEBAR ---
+# --- 3. SEITENLEISTE (KONFIGURATION) ---
 with st.sidebar:
-    st.title("Vision Config")
-    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
+    st.header("⚙️ Konfiguration")
+    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()), help="Beeinflusst die Zerspanbarkeit und Wärmeentwicklung.")
     mat = MATERIALIEN[mat_name]
-    vc = st.slider("vc [m/min]", 20, 500, 160)
-    f = st.slider("f [mm/U]", 0.02, 1.0, 0.18)
-    d = st.number_input("Ø Bohrwerkzeug [mm]", 1.0, 60.0, 12.0)
-    cooling = st.toggle("Kühlschmierung aktiv", value=True)
+    vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160, help="Geschwindigkeit der Schneide. Hauptgrund für Hitze.")
+    f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18, help="Weg pro Umdrehung. Bestimmt die Spandicke und mechanische Last.")
+    d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
+    cooling = st.toggle("Kühlschmierung", value=True)
     
     st.divider()
-    st.subheader("Simulations-Takt")
-    # Geschwindigkeitsregler wieder aktiviert
-    sim_speed = st.select_slider("Verzögerung pro Zyklus (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
+    st.subheader("⏱️ Simulations-Tempo")
+    sim_speed = st.select_slider("Verzögerung (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
     
     st.divider()
-    st.subheader("Sensorempfindlichkeit")
-    sens_vib = st.slider("Vibrations-Gain", 0.1, 5.0, 1.0)
-    sens_load = st.slider("Last-Gain", 0.1, 5.0, 1.0)
+    st.subheader("📡 Sensoren")
+    sens_vib = st.slider("Vibrations-Verstärkung", 0.1, 5.0, 1.0)
+    sens_load = st.slider("Last-Verstärkung", 0.1, 5.0, 1.0)
 
-# --- 4. ENGINE ---
+# --- 4. BERECHNUNGS-LOGIK ---
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += 1
     
+    # Physik-Modell
     fc = mat['kc1.1'] * (f** (1-mat['mc'])) * (d/2)
     mc_raw = (fc * d) / 2000
     wear_inc = (mat['wear_rate'] * (vc**1.6) * f) / (15000 if cooling else 400)
@@ -107,6 +107,7 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s['t_current'] += (target_t - s['t_current']) * 0.15
     amp = ((0.005 + (s['wear'] * 0.002)) * sens_vib) + s['seed'].normal(0, 0.001) * sens_vib
     
+    # KI-Status
     engine = get_engine()
     risk = engine.query(['State'], evidence={
         'Age': 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2),
@@ -118,50 +119,56 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     if risk > 0.98 or s['wear'] > 100: s['broken'] = True; s['active'] = False
     
     s['history'].append({'c':s['cycle'], 'r':risk, 'w':s['wear'], 't':s['t_current'], 'amp':amp, 'mc':mc_raw})
-    s['logs'].insert(0, f"CYC {s['cycle']} | TTF-Trend stabilisiert...")
+    
+    # KORREKTUR: Dynamischer Log-Stream
+    timestamp = time.strftime("%H:%M:%S")
+    s['logs'].insert(0, f"[{timestamp}] ZYK {s['cycle']} | Risiko: {risk:.1%} | Md: {mc_raw:.1f}Nm | Vib: {amp:.3f}")
 
-# --- 5. UI ---
-st.title("AI PRECISION TWIN | CONTROL")
+# --- 5. OBERFLÄCHE (DASHBOARD) ---
+st.title("KI-ZWILLING | VORAUSSCHAUENDE WARTUNG")
 
-col_left, col_mid, col_right = st.columns([1, 2, 1])
+col_metrics, col_main, col_logs = st.columns([1, 2, 1])
 
-with col_left:
-    st.markdown(f'<div class="glass-card"><span class="val-title">Zyklus</span><br><span class="val-main blue-glow">{st.session_state.twin["cycle"]}</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{st.session_state.twin["t_current"]:.1f}°</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f}%</span></div>', unsafe_allow_html=True)
+with col_metrics:
+    st.markdown(f'<div class="glass-card"><span class="val-title">Aktueller Zyklus</span><br><span class="val-main blue-glow">{st.session_state.twin["cycle"]}</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{st.session_state.twin["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
 
-with col_mid:
-    # PREDICTIVE CALC
+with col_main:
+    # VORHERSAGE (TTF)
     ttf = "---"
     if len(st.session_state.twin['history']) > 3:
         df_calc = pd.DataFrame(st.session_state.twin['history'])
         z = np.polyfit(df_calc['c'], df_calc['w'], 1)
-        slope = max(0.000001, z[0])
-        ttf = max(0, int((100 - st.session_state.twin['wear']) / slope))
+        steigung = max(0.000001, z[0])
+        rest_zyklen = int((100 - st.session_state.twin['wear']) / steigung)
+        ttf = max(0, rest_zyklen)
 
-    st.markdown(f'<div class="predictive-card"><span class="val-title" style="color:#58a6ff">🔮 Restlaufzeit (TTF)</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis Wartung</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="predictive-card"><span class="val-title" style="color:#58a6ff">🔮 Restlaufzeit bis Wartung (TTF)</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Verbleibende Bohrungen</span></div>', unsafe_allow_html=True)
 
     if len(st.session_state.twin['history']) > 0:
         df_plot = pd.DataFrame(st.session_state.twin['history'])
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
         fig.add_trace(go.Scatter(x=df_plot['c'], y=df_plot['r']*100, fill='tozeroy', name="Bruchrisiko %", line=dict(color='#f85149')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_plot['c'], y=df_plot['mc'], name="Last Nm", line=dict(color='#58a6ff')), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df_plot['c'], y=df_plot['mc'], name="Drehmoment Nm", line=dict(color='#58a6ff')), row=2, col=1)
         fig.update_layout(height=400, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0,r=0,t=0,b=0))
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("System bereit. Drücken Sie 'START', um die Simulation zu beginnen.")
 
-with col_right:
-    st.markdown('<p class="val-title">Analytics Stream</p>', unsafe_allow_html=True)
-    log_txt = "".join([f"<div style='margin-bottom:4px;'>{l}</div>" for l in st.session_state.twin['logs'][:60]])
-    st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
+with col_logs:
+    st.markdown('<p class="val-title">Live-Analyse-Protokoll</p>', unsafe_allow_html=True)
+    log_content = "".join([f"<div style='margin-bottom:4px; border-bottom:1px solid #30363d; padding-bottom:2px;'>{l}</div>" for l in st.session_state.twin['logs'][:60]])
+    st.markdown(f'<div class="terminal">{log_content}</div>', unsafe_allow_html=True)
 
 st.divider()
 c1, c2 = st.columns(2)
-if c1.button("▶ START / STOP", use_container_width=True): st.session_state.twin['active'] = not st.session_state.twin['active']
-if c2.button("🔄 RESET", use_container_width=True):
+if c1.button("▶ START / STOPP", use_container_width=True): 
+    st.session_state.twin['active'] = not st.session_state.twin['active']
+if c2.button("🔄 SYSTEM-RESET", use_container_width=True):
     st.session_state.twin = {'cycle':0,'wear':0.0,'history':[],'logs':[],'active':False,'broken':False,'t_current':22.0,'seed':np.random.RandomState(42)}
     st.rerun()
 
-# --- RE-RUN LOGIK MIT VARIABLEM SLEEP ---
 if st.session_state.twin['active']:
     if sim_speed > 0:
         time.sleep(sim_speed / 1000)
