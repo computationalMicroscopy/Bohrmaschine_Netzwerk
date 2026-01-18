@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 
-# --- 1. SETUP & THEME ---
-st.set_page_config(layout="wide", page_title="KI-Physik-Labor v18", page_icon="🔬")
+# --- 1. SETUP & DESIGN ---
+st.set_page_config(layout="wide", page_title="KI-Physik-Labor v19", page_icon="🔬")
 
 st.markdown("""
     <style>
@@ -27,20 +27,19 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DAS ULTIMATIVE KI-MODELL (ALLE SENSOREN) ---
+# --- 2. KI-MODELL (KALIBRIERT AUF AMPLITUDE) ---
 @st.cache_resource
-def build_full_stack_bn(n_v, n_t, n_s):
+def build_v19_bn(n_v, n_t, n_s):
     model = DiscreteBayesianNetwork([
-        ('Zyklen_Alter', 'Zustand'), ('Verschleiss', 'Zustand'), ('Last', 'Zustand'), ('Kuehlung', 'Zustand'),
-        ('Zustand', 'Vibration'), ('Zustand', 'Temperatur'), ('Zustand', 'Stromaufnahme')
+        ('Alterung', 'Zustand'), ('Verschleiss', 'Zustand'), ('Last', 'Zustand'), ('Kuehlung', 'Zustand'),
+        ('Zustand', 'Amplitude'), ('Zustand', 'Temperatur'), ('Zustand', 'Stromaufnahme')
     ])
     
-    cpd_zy = TabularCPD('Zyklen_Alter', 3, [[0.33], [0.33], [0.34]])
+    cpd_zy = TabularCPD('Alterung', 3, [[0.33], [0.33], [0.34]])
     cpd_ve = TabularCPD('Verschleiss', 3, [[0.33], [0.33], [0.34]])
     cpd_la = TabularCPD('Last', 2, [[0.7], [0.3]])
     cpd_kh = TabularCPD('Kuehlung', 2, [[0.95], [0.05]])
     
-    # Zustand CPT
     z_matrix = []
     for zy in range(3):
         for ve in range(3):
@@ -51,15 +50,14 @@ def build_full_stack_bn(n_v, n_t, n_s):
                     p_warn = min(1.0 - p_bruch, score / 10.0)
                     z_matrix.append([1.0-p_warn-p_bruch, p_warn, p_bruch])
                     
-    cpd_z = TabularCPD('Zustand', 3, np.array(z_matrix).T, 
-                       evidence=['Zyklen_Alter', 'Verschleiss', 'Last', 'Kuehlung'], 
-                       evidence_card=[3, 3, 2, 2])
+    cpd_z = TabularCPD('Zustand', 3, np.array(z_matrix).T, evidence=['Alterung', 'Verschleiss', 'Last', 'Kuehlung'], evidence_card=[3, 3, 2, 2])
     
-    cpd_vib = TabularCPD('Vibration', 2, [[1-n_v, 0.4, 0.05], [n_v, 0.6, 0.95]], evidence=['Zustand'], evidence_card=[3])
+    # Amplitude in mm: 0 = Gering (<0.05mm), 1 = Hoch (>0.05mm)
+    cpd_amp = TabularCPD('Amplitude', 2, [[1-n_v, 0.4, 0.02], [n_v, 0.6, 0.98]], evidence=['Zustand'], evidence_card=[3])
     cpd_tmp = TabularCPD('Temperatur', 2, [[1-n_t, 0.3, 0.01], [n_t, 0.7, 0.99]], evidence=['Zustand'], evidence_card=[3])
     cpd_str = TabularCPD('Stromaufnahme', 2, [[1-n_s, 0.2, 0.1], [n_s, 0.8, 0.9]], evidence=['Zustand'], evidence_card=[3])
     
-    model.add_cpds(cpd_zy, cpd_ve, cpd_la, cpd_kh, cpd_z, cpd_vib, cpd_tmp, cpd_str)
+    model.add_cpds(cpd_zy, cpd_ve, cpd_la, cpd_kh, cpd_z, cpd_amp, cpd_tmp, cpd_str)
     return model
 
 # --- 3. SESSION STATE ---
@@ -69,28 +67,32 @@ if 'state' not in st.session_state:
         'aktiv': False, 'gebrochen': False, 'temp_akt': 20.0, 'rng': np.random.RandomState(42)
     }
 
-# --- 4. BEDIENPANEL (ALLE REGLER ZURÜCK) ---
+# --- 4. BEDIENPANEL ---
 with st.sidebar:
-    st.header("⚙️ Konfiguration")
+    st.header("⚡ Simulations-Kontrolle")
+    # Geschwindigkeitsregler von sehr niedrig bis extrem hoch
+    sim_speed = st.select_slider(
+        "Simulationsgeschwindigkeit", 
+        options=[1000, 500, 200, 100, 50, 20, 10, 0], 
+        value=100,
+        format_func=lambda x: "Extrem Hoch (0ms)" if x == 0 else ("Sehr Niedrig" if x == 1000 else f"{x}ms")
+    )
     
+    st.divider()
     with st.expander("Prozess-Parameter", expanded=True):
-        bohrer = st.selectbox("Bohrertyp", ["HSS-Co5", "VHM-TiAlN"])
         material = st.selectbox("Werkstoff", ["Alu", "Edelstahl 1.4301", "Titan Grad 5"])
-        vc = st.slider("vc (Schnittgeschw.)", 10, 400, 120)
-        f = st.slider("f (Vorschub)", 0.01, 0.8, 0.15)
+        vc = st.slider("vc (m/min)", 10, 450, 150)
+        f = st.slider("f (mm/U)", 0.01, 0.8, 0.15)
         d_bohrer = st.number_input("Ø Bohrer [mm]", 1.0, 50.0, 10.0)
     
-    with st.expander("Sensor- & Umgebungsrauschen"):
-        n_vib = st.slider("Vibrations-Noise", 0.0, 1.0, 0.15)
-        n_temp = st.slider("Thermal-Noise", 0.0, 1.0, 0.05)
-        n_str = st.slider("Strom-Noise", 0.0, 1.0, 0.02)
-        instabil = st.slider("Instabilität", 0.0, 1.0, 0.0)
+    with st.expander("Sensorik & Rauschen"):
+        n_vib = st.slider("Vibrations-Rauschen", 0.0, 1.0, 0.15)
+        instabil = st.slider("Aufspann-Instabilität (mm)", 0.0, 0.5, 0.02)
     
     kuehlung = st.toggle("KSS-Kühlung aktiv", value=True)
-    takt = st.select_slider("Sim-Takt [ms]", [500, 200, 100, 50], 100)
 
-# --- 5. PHYSIK- & KI-LOGIK ---
-bn = build_full_stack_bn(n_vib, n_temp, n_str)
+# --- 5. PHYSIK-RECHNER ---
+bn = build_v19_bn(n_vib, 0.05, 0.02)
 infer = VariableElimination(bn)
 
 if st.session_state.state['aktiv'] and not st.session_state.state['gebrochen']:
@@ -102,24 +104,22 @@ if st.session_state.state['aktiv'] and not st.session_state.state['gebrochen']:
     md = ((d_bohrer / 2) * f * kc * d_bohrer) / 2000
     pwr = (md * (vc * 1000 / (np.pi * d_bohrer))) / 9550
     
-    # Verschleiß & Temperatur
+    # Verschleiß
     v_mat = {"Alu": 0.02, "Edelstahl 1.4301": 0.3, "Titan Grad 5": 1.5}[material]
     s['verschleiss'] += (v_mat * (vc**1.4) * f) / (10000 if kuehlung else 400)
     
-    ziel_t = 20 + (s['verschleiss'] * 1.2) + (vc * 0.1) + (0 if kuehlung else 160)
-    s['temp_akt'] += (ziel_t - s['temp_akt']) * 0.2
+    # Amplitude in mm berechnen (Realistische Werte zwischen 0.01 und 0.5 mm)
+    # Basisvibration + verschleißbedingtes Aufschwingen + Instabilität
+    amp_mm = (0.01 + (s['verschleiss'] * 0.002) + (instabil)) * (1 + s['rng'].normal(0, 0.1))
     
-    # Sensoren simulieren
-    vib_ist = 10 + (s['verschleiss'] * 0.5) + (instabil * 50) + s['rng'].normal(0, 5)
-    ampere = pwr * 4.5 + s['rng'].normal(0, 0.5)
+    s['temp_akt'] += (20 + (s['verschleiss'] * 1.2) + (vc * 0.1) + (0 if kuehlung else 160) - s['temp_akt']) * 0.2
     
-    # KI-Inferenz
+    # Inferenz
     zyk_idx = 0 if s['zyklus'] < 150 else (1 if s['zyklus'] < 500 else 2)
-    ver_idx = 0 if s['verschleiss'] < 30 else (1 if s['verschleiss'] < 85 else 2)
     evidenz = {
-        'Zyklen_Alter': zyk_idx, 'Verschleiss': ver_idx,
+        'Alterung': zyk_idx, 'Verschleiss': 0 if s['verschleiss'] < 30 else (1 if s['verschleiss'] < 85 else 2),
         'Last': 1 if md > (d_bohrer * 1.6) else 0, 'Kuehlung': 0 if kuehlung else 1,
-        'Vibration': 1 if vib_ist > 60 else 0, 'Temperatur': 1 if s['temp_akt'] > 95 else 0
+        'Amplitude': 1 if amp_mm > 0.08 else 0, 'Temperatur': 1 if s['temp_akt'] > 95 else 0
     }
     risiko = infer.query(['Zustand'], evidence=evidenz).values[2]
     
@@ -127,16 +127,16 @@ if st.session_state.state['aktiv'] and not st.session_state.state['gebrochen']:
         s['gebrochen'] = True
         s['aktiv'] = False
 
-    s['historie'].append({'z':s['zyklus'], 'r':risiko, 'w':s['verschleiss'], 't':s['temp_akt'], 'v':vib_ist, 'a':ampere, 'md':md})
-    s['logs'].insert(0, f"Zyk {s['zyklus']}: Risiko {risiko:.1%} | {s['temp_akt']:.1f}°C | {vib_ist:.1f}g")
+    s['historie'].append({'z':s['zyklus'], 'r':risiko, 'w':s['verschleiss'], 't':s['temp_akt'], 'amp':amp_mm, 'md':md})
+    s['logs'].insert(0, f"Zyk {s['zyklus']}: Risiko {risiko:.1%} | Amp {amp_mm:.3f}mm")
 
 # --- 6. DASHBOARD ---
-st.title("🔩 Pro-Physik-Labor: Zerspanung & KI v18")
+st.title("🔩 Pro-Physik-Labor: High-Speed Simulation v19")
 
-# Top-Leiste: Zyklen & Risiko
+# Top-Sektion
 c_top1, c_top2 = st.columns([1, 2])
 with c_top1:
-    st.markdown(f'<div class="sensor-card"><small>BOHRZYKLEN (KUMULATIV)</small><br><div class="cycle-counter">{st.session_state.state["zyklus"]}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sensor-card"><small>BOHRZYKLEN</small><br><div class="cycle-counter">{st.session_state.state["zyklus"]}</div></div>', unsafe_allow_html=True)
 with c_top2:
     if st.session_state.state['historie']:
         df = pd.DataFrame(st.session_state.state['historie'])
@@ -153,35 +153,36 @@ with c_b2:
         st.session_state.state = {'zyklus':0,'verschleiss':0.0,'historie':[],'logs':[],'aktiv':False,'gebrochen':False,'temp_akt':20.0,'rng':np.random.RandomState(42)}
         st.rerun()
 with c_b3:
-    if st.session_state.state['gebrochen']: st.error("WERKZEUGBRUCH: Standzeit überschritten!")
+    if st.session_state.state['gebrochen']: st.error("WERKZEUGBRUCH!")
 
 st.divider()
 
-# Sensoren-Anzeige
+# Sensoren
 m1, m2, m3, m4 = st.columns(4)
-last = st.session_state.state['historie'][-1] if st.session_state.state['historie'] else {'w':0,'v':0,'t':20,'a':0,'md':0}
+last = st.session_state.state['historie'][-1] if st.session_state.state['historie'] else {'w':0,'amp':0,'t':20,'md':0}
 
-with m1: st.markdown(f'<div class="sensor-card">Vibration<br><span class="metric-val">{last["v"]:.1f} g</span></div>', unsafe_allow_html=True)
-with m2: st.markdown(f'<div class="sensor-card">Stromaufnahme<br><span class="metric-val">{last["a"]:.2f} A</span></div>', unsafe_allow_html=True)
+with m1: st.markdown(f'<div class="sensor-card">Amplitude<br><span class="metric-val">{last["amp"]:.3f} mm</span></div>', unsafe_allow_html=True)
+with m2: st.markdown(f'<div class="sensor-card">Verschleiß<br><span class="metric-val">{last["w"]:.1f} %</span></div>', unsafe_allow_html=True)
 with m3: st.markdown(f'<div class="sensor-card">Temperatur<br><span class="metric-val">{last["t"]:.1f} °C</span></div>', unsafe_allow_html=True)
 with m4: st.markdown(f'<div class="sensor-card">Drehmoment<br><span class="metric-val">{last["md"]:.1f} Nm</span></div>', unsafe_allow_html=True)
 
-# Hauptgrafik & Log
+# Grafik & Log
 col_l, col_r = st.columns([2, 1])
 with col_l:
     if st.session_state.state['historie']:
         df = pd.DataFrame(st.session_state.state['historie'])
         fig = make_subplots(specs=[[{"secondary_y": True}]])
-        fig.add_trace(go.Scatter(x=df['z'], y=df['v'], name="Vibration (g)", line=dict(color='cyan')))
+        fig.add_trace(go.Scatter(x=df['z'], y=df['amp'], name="Amplitude (mm)", line=dict(color='cyan')))
         fig.add_trace(go.Scatter(x=df['z'], y=df['w'], name="Verschleiß (%)", line=dict(color='orange', dash='dot')), secondary_y=True)
-        fig.update_layout(height=400, template="plotly_dark", title="Sensordynamik & Alterung")
+        fig.update_layout(height=400, template="plotly_dark", title="Amplituden-Verlauf vs. Alterung")
         st.plotly_chart(fig, use_container_width=True)
 
 with col_r:
-    st.subheader("📜 Sensor-Protokoll")
+    st.subheader("📜 System-Protokoll")
     log_h = "".join([f"<div style='border-bottom:1px solid #333'>{l}</div>" for l in st.session_state.state['logs'][:50]])
     st.markdown(f'<div class="log-area">{log_h}</div>', unsafe_allow_html=True)
 
 if st.session_state.state['aktiv']:
-    time.sleep(takt/1000)
+    if sim_speed > 0:
+        time.sleep(sim_speed/1000)
     st.rerun()
