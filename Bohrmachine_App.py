@@ -7,177 +7,140 @@ from pgmpy.inference import VariableElimination
 import plotly.graph_objects as go
 import time
 
-# --- 1. Seiteneinstellungen & Styling ---
-st.set_page_config(layout="wide", page_title="AI Predictive Maintenance Lab", page_icon="⚙️")
+# --- 1. UI SETUP & THEME ---
+st.set_page_config(layout="wide", page_title="AI Bohr-Labor 2.0", page_icon="💎")
 
+# Custom CSS für ein Dark-Industrial Design
 st.markdown("""
     <style>
-    .reportview-container { background: #f0f2f6; }
-    .stMetric { border: 1px solid #d1d8e0; padding: 15px; border-radius: 10px; background: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
-    .sensor-card { background: #ffffff; padding: 20px; border-radius: 15px; border-left: 5px solid #3498db; margin-bottom: 20px; }
+    .stApp { background-color: #0e1117; color: white; }
+    .status-card { 
+        background-color: #1a1c24; border-radius: 15px; padding: 20px; 
+        border: 1px solid #30363d; text-align: center;
+    }
+    .feature-box {
+        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+        padding: 15px; border-radius: 10px; border-left: 5px solid #3b82f6;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. Sidebar: Fortgeschrittene Parameter ---
-st.sidebar.title("🛠️ Labor-Konfiguration")
-
-with st.sidebar.expander("📈 BN-Modell Parameter", expanded=True):
-    prob_hard_material = st.slider("Häufigkeit Hartes Material", 0.1, 0.9, 0.5, 0.05)
-    wear_speed = st.slider("Verschleiß-Beschleuniger", 1.0, 5.0, 2.0)
-
-with st.sidebar.expander("📡 Sensor-Charakteristik"):
-    vib_noise = st.slider("Rauschen Vibration", 0.0, 0.4, 0.1)
-    current_noise = st.slider("Rauschen Stromaufnahme", 0.0, 0.4, 0.05)
-
-with st.sidebar.expander("🚨 Alarm-Management"):
-    threshold_warning = st.slider("Warnung-Schwellenwert", 0.3, 0.9, 0.6)
-    sim_speed = st.select_slider("Simulations-Takt (Sek.)", options=[1.0, 0.5, 0.3, 0.1, 0.01], value=0.3)
-
-# --- 3. Bayessches Netzwerk Kern ---
+# --- 2. LOGIK: BAYESSIAN NETWORK ---
 @st.cache_resource
-def create_advanced_bn(noise_v, noise_c, hard_prob, wear):
+def create_bn(noise_v, noise_c, hard_prob):
     model = DiscreteBayesianNetwork([
         ('Alter', 'Zustand'), ('Material', 'Zustand'),
         ('Zustand', 'Vibration'), ('Zustand', 'Strom')
     ])
-
-    cpd_alter = TabularCPD(variable='Alter', variable_card=3, values=[[0.7], [0.2], [0.1]])
-    cpd_material = TabularCPD(variable='Material', variable_card=2, values=[[1-hard_prob], [hard_prob]])
-
-    # Dynamische Zustands-CPT basierend auf Verschleiß-Parameter
-    cpd_zustand = TabularCPD(
-        variable='Zustand', variable_card=3,
-        values=[
-            [0.99, 0.85, 0.70, 0.30, 0.05, 0.01], # Intakt
-            [0.01, 0.10, 0.20, 0.40, 0.50, 0.30], # Stumpf
-            [0.00, 0.05, 0.10, 0.30, 0.45, 0.69]  # Gebrochen
-        ],
-        evidence=['Alter', 'Material'], evidence_card=[3, 2]
-    )
-
-    cpd_vibration = TabularCPD(
-        variable='Vibration', variable_card=2,
-        values=[[1-noise_v, 0.4, 0.1], [noise_v, 0.6, 0.9]],
-        evidence=['Zustand'], evidence_card=[3]
-    )
-    
-    cpd_strom = TabularCPD(
-        variable='Strom', variable_card=2,
-        values=[[1-noise_c, 0.2, 0.5], [noise_c, 0.8, 0.5]],
-        evidence=['Zustand'], evidence_card=[3]
-    )
-
-    model.add_cpds(cpd_alter, cpd_material, cpd_zustand, cpd_vibration, cpd_strom)
+    cpd_a = TabularCPD('Alter', 3, [[0.7], [0.2], [0.1]])
+    cpd_m = TabularCPD('Material', 2, [[1-hard_prob], [hard_prob]])
+    cpd_z = TabularCPD('Zustand', 3, [
+            [0.99, 0.85, 0.70, 0.30, 0.05, 0.01], 
+            [0.01, 0.10, 0.20, 0.40, 0.50, 0.30], 
+            [0.00, 0.05, 0.10, 0.30, 0.45, 0.69]], 
+            evidence=['Alter', 'Material'], evidence_card=[3, 2])
+    cpd_v = TabularCPD('Vibration', 2, [[1-noise_v, 0.4, 0.1], [noise_v, 0.6, 0.9]], evidence=['Zustand'], evidence_card=[3])
+    cpd_s = TabularCPD('Strom', 2, [[1-noise_c, 0.2, 0.5], [noise_c, 0.8, 0.5]], evidence=['Zustand'], evidence_card=[3])
+    model.add_cpds(cpd_a, cpd_m, cpd_z, cpd_v, cpd_s)
     return model
 
-# --- 4. Session Management ---
+# --- 3. SESSION STATE ---
 if 'history' not in st.session_state:
-    st.session_state.update({'drilling_count': 0, 'history': [], 'is_running': False, 'manual_fail': False})
+    st.session_state.update({'count': 0, 'history': [], 'is_run': False, 'fail_next': False})
 
-bn_model = create_advanced_bn(vib_noise, current_noise, prob_hard_material, wear_speed)
-inference = VariableElimination(bn_model)
+# --- 4. SIDEBAR PARAMETER ---
+with st.sidebar:
+    st.title("🛠️ Labor-Zentrale")
+    st.subheader("Umwelt & Sensorik")
+    h_prob = st.slider("Anteil Hartes Material", 0.0, 1.0, 0.3)
+    n_v = st.slider("Vibrations-Rauschen", 0.0, 0.5, 0.05)
+    n_c = st.slider("Strom-Rauschen", 0.0, 0.5, 0.02)
+    st.divider()
+    speed = st.select_slider("Taktung", [1.0, 0.5, 0.1, 0.01], 0.1)
 
-# --- 5. Haupt-Interface ---
-st.title("🛡️ AI Reliability & Maintenance Lab")
-st.markdown("### Probabilistische Zustandsüberwachung einer Standbohrmaschine")
+bn = create_bn(n_v, n_c, h_prob)
+inf = VariableElimination(bn)
 
-# Obere Reihe: Status-Karten
-m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+# --- 5. MAIN UI ---
+st.title("⚙️ AI Bohr-Labor: Condition Monitoring")
 
-# Simulation Logik
-if st.session_state.is_running:
-    st.session_state.drilling_count += 1
-    current_age = min(2, st.session_state.drilling_count // 40)
-    
-    # Sampling (vereinfacht für UI-Reaktion)
-    true_z = 2 if st.session_state.manual_fail else (1 if np.random.random() > 0.88 else 0)
-    st.session_state.manual_fail = False
-    
-    v_val = 1 if (true_z > 0 or np.random.random() < vib_noise) else 0
-    s_val = 1 if (true_z == 1 or np.random.random() < current_noise) else 0
-    mat_val = 1 if np.random.random() < prob_hard_material else 0
-    
-    ev = {'Vibration': v_val, 'Strom': s_val, 'Material': mat_val, 'Alter': current_age}
+# Obere Kontrollleiste
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    if st.button("▶️ START / STOP", use_container_width=True): st.session_state.is_run = not st.session_state.is_run
+with c2:
+    if st.button("🔄 SYSTEM RESET", use_container_width=True): 
+        st.session_state.update({'count':0, 'history':[], 'is_run':False})
+        st.rerun()
+with c3:
+    if st.button("💥 FEHLER INJIZIEREN", type="primary", use_container_width=True): st.session_state.fail_next = True
+with c4:
+    st.markdown(f"**Vorgänge:** {st.session_state.count}")
+
+# Simulation
+if st.session_state.is_run:
+    st.session_state.count += 1
+    age = min(2, st.session_state.count // 40)
+    mat = 1 if np.random.random() < h_prob else 0
+    true_z = 2 if st.session_state.fail_next else (1 if (age==2 and np.random.random()>0.7) else 0)
+    st.session_state.fail_next = False
+    v_s = 1 if (true_z > 0 or np.random.random() < n_v) else 0
+    c_s = 1 if (true_z == 1 or np.random.random() < n_c) else 0
+    ev = {'Vibration': v_s, 'Strom': c_s, 'Material': mat, 'Alter': age}
+    res = inf.query(['Zustand'], evidence=ev).values
+    st.session_state.history.append({'t': st.session_state.count, 'Intakt': res[0], 'Stumpf': res[1], 'Bruch': res[2]})
 else:
-    ev = None
-    current_age = 0
+    ev, res = None, [0, 0, 0]
 
-# UI Komponenten
-with m_col1:
-    st.metric("Bohrvorgänge", st.session_state.drilling_count)
-with m_col2:
-    age_labels = ["Neu", "Mittel", "Alt"]
-    st.metric("Bohrer-Alter", age_labels[current_age])
-with m_col3:
-    status_text = "Simulation Inaktiv"
-    if ev:
-        status_text = "Hart" if ev['Material'] == 1 else "Weich"
-    st.metric("Aktuelles Material", status_text)
-with m_col4:
-    st.metric("Sensor-Status", "Online" if st.session_state.is_running else "Standby")
-
+# Dashboard-Bereich
 st.write("---")
+left, right = st.columns([1, 1.5])
 
-# Mittlere Reihe: Analyse & Lab-Steuerung
-l_col, r_col = st.columns([1, 2])
+with left:
+    st.subheader("🎯 Live-Zustandsanalyse")
+    # Gauges für die Zustände
+    for i, (name, color) in enumerate(zip(["Intakt", "Stumpf", "Bruch"], ["#22c55e", "#eab308", "#ef4444"])):
+        val = res[i]
+        st.markdown(f"""
+            <div style="margin-bottom:10px">
+                <div style="display:flex; justify-content:space-between"><span>{name}</span><span>{val:.1%}</span></div>
+                <div style="background-color:#334155; border-radius:10px; height:12px">
+                    <div style="background-color:{color}; width:{val*100}%; height:12px; border-radius:10px; transition: width 0.5s"></div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
-with l_col:
-    st.subheader("🕹️ Steuerung")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("▶️ Start / Stop", use_container_width=True):
-            st.session_state.is_running = not st.session_state.is_running
-    with c2:
-        if st.button("🔄 Reset", use_container_width=True):
-            st.session_state.drilling_count = 0
-            st.session_state.history = []
-            st.rerun()
-    
-    if st.button("💥 FEHLER INJIZIEREN (Bohrerbruch)", type="primary", use_container_width=True):
-        st.session_state.manual_fail = True
+    # DAS WOW-FEATURE: KAUSALE ATTRIBUTION
+    st.write(" ")
+    with st.container():
+        st.markdown('<div class="feature-box">', unsafe_allow_html=True)
+        st.subheader("💡 KI-Erklärung (Warum?)")
+        if ev:
+            if ev['Vibration'] == 1 and res[2] > 0.4:
+                st.write("Die KI erkennt **Vibrationen**, die untypisch für das aktuelle Alter sind. Dies deutet kausal auf einen Bruch hin.")
+            elif ev['Strom'] == 1:
+                st.write("Erhöhte **Stromaufnahme** detektiert. Das BN schließt daraus auf erhöhte Reibung (Stumpf).")
+            else:
+                st.write("Alle Sensoren im Normbereich. Die Wahrscheinlichkeit basiert auf dem **Alter**.")
+        else: st.write("Warte auf Daten...")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.write("---")
-    st.subheader("🔍 Aktuelle Inferenz")
-    if ev:
-        res = inference.query(variables=['Zustand'], evidence=ev).values
-        
-        # Diagnose-Anzeige mit Fortschrittsbalken
-        for i, label in enumerate(["Intakt", "Stumpf", "Gebrochen"]):
-            cols = st.columns([1, 4])
-            cols[0].write(label)
-            cols[1].progress(float(res[i]))
-        
-        if res[2] > threshold_warning:
-            st.error(f"KRITISCH: Wahrscheinlichkeit für Bruch bei {res[2]:.1%}")
-        elif res[1] > threshold_warning:
-            st.warning(f"WARNUNG: Verschleiß erkannt ({res[1]:.1%})")
-            
-        if st.session_state.is_running:
-            st.session_state.history.append({'t': st.session_state.drilling_count, 'i': res[0], 's': res[1], 'g': res[2]})
-    else:
-        st.info("Starten Sie die Simulation für Live-Diagnose.")
-
-with r_col:
-    st.subheader("📊 Wahrscheinlichkeits-Historie")
+with right:
+    st.subheader("📈 Wahrscheinlichkeits-Historie")
     if st.session_state.history:
         df = pd.DataFrame(st.session_state.history)
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df['t'], y=df['i'], name="Intakt", fill='tozeroy', line_color='#2ecc71'))
-        fig.add_trace(go.Scatter(x=df['t'], y=df['s'], name="Stumpf", fill='tonexty', line_color='#f1c40f'))
-        fig.add_trace(go.Scatter(x=df['t'], y=df['g'], name="Gebrochen", fill='tonexty', line_color='#e74c3c'))
-        
+        fig.add_trace(go.Scatter(x=df['t'], y=df['Bruch'], name="Bruch-Gefahr", line=dict(color='#ef4444', width=3)))
+        fig.add_trace(go.Scatter(x=df['t'], y=df['Stumpf'], name="Verschleiß", line=dict(color='#eab308', width=2, dash='dot')))
         fig.update_layout(
-            margin=dict(l=10, r=10, t=10, b=10),
-            height=400,
-            xaxis_title="Zeitverlauf (Vorgänge)",
-            yaxis_title="Konfidenz",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color="white"), height=350,
+            xaxis=dict(showgrid=False), yaxis=dict(range=[0, 1.1], gridcolor="#334155")
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Drill_Press_BW_2015-11-09_14-38-00.jpg/640px-Drill_Press_BW_2015-11-09_14-38-00.jpg", caption="Bereit für Simulation")
+        st.info("Noch keine Daten vorhanden. Simulation starten!")
 
-# Automatischer Rerun
-if st.session_state.is_running:
-    time.sleep(sim_speed)
+if st.session_state.is_run:
+    time.sleep(speed)
     st.rerun()
