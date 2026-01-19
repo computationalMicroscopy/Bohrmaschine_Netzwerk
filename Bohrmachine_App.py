@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from pgmpy.models import DiscreteBayesianNetwork  # Technischer Fix
+from pgmpy.models import DiscreteBayesianNetwork  # Notwendiger technischer Fix
 from pgmpy.factors.discrete import TabularCPD
 from pgmpy.inference import VariableElimination
 
@@ -33,7 +33,7 @@ def setup_model():
     model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state)
     return VariableElimination(model)
 
-# --- UI: STREAMLIT ---
+# --- UI: STREAMLIT (Wiederhergestelltes Layout) ---
 st.set_page_config(page_title="KI-Zustandsüberwachung", layout="wide")
 st.title("Digitaler Zwilling: Echtzeit-Bruchrisiko-Analyse")
 
@@ -67,7 +67,7 @@ result = infer.query(variables=['State'], evidence={
 })
 risk = result.values[1] * 100
 
-# Metriken (Original Layout)
+# Metrik-Dashboard (Wiederhergestellt)
 col1, col2, col3 = st.columns(3)
 col1.metric("Drehmoment Md", f"{md:.2f} Nm")
 col2.metric("Temperatur T", f"{current_temp:.1f} °C")
@@ -75,10 +75,10 @@ col3.metric("KI-Bruchrisiko", f"{risk:.1f} %")
 
 st.subheader("Echtzeit-Analyse (XAI)")
 st.code(f"""
-[STATUS] Alter:   {'ALT' if age_state else 'NEU'}
-[STATUS] Last:    {'HOCH' if load_state else 'NORMAL'}
-[STATUS] Thermik: {'KRITISCH' if therm_state else 'NORMAL'}
-[STATUS] Kühlung: {'AUS' if cool_state else 'AN'}
+[STATUS] Alter:   {'ALT' if age_state else 'NEU'} (Trigger: Zyklen)
+[STATUS] Last:    {'HOCH' if load_state else 'NORMAL'} (Trigger: Md)
+[STATUS] Thermik: {'KRITISCH' if therm_state else 'NORMAL'} (Trigger: Temp)
+[STATUS] Kühlung: {'AUS' if cool_state else 'AN'} (Trigger: Schalter)
 --------------------------------------------------
 Berechnetes Risiko: {risk:.1f}%
 """)
