@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI Bohrmaschinen Simulations- und Wartungstool", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI - Bohrmaschinen Simulations- und Wartungstool", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -142,7 +142,7 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
                      f"[{zeit}] ZYK {s['cycle']} | RISIKO: {risk:.1%} | Md: {mc_raw:.1f}Nm\n ➔ KI-LOGIK: [Alter: {age_txt} | Last: {load_txt} | Temp: {therm_txt} | Cool: {cool_txt}]")
 
 # --- 6. UI ---
-st.title("KI Bohrmaschinen Simulations- und Wartungstool")
+st.title("KI - Bohrmaschinen Simulations- und Wartungstool")
 col_metrics, col_main, col_logs = st.columns([1, 2, 1])
 
 with col_metrics:
