@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI-Zwilling Bohrsystem v21.8.2", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI Bohrmaschinen Simulations- und Wartungstool", page_icon="⚙️")
 
 st.markdown("""
     <style>
