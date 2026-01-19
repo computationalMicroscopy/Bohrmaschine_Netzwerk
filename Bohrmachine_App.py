@@ -1,14 +1,14 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from pgmpy.models import BayesianNetwork
+from pgmpy.models import DiscreteBayesianNetwork  # Korrigierter Import
 from pgmpy.factors.discrete import TabularCPD
 from pgmpy.inference import VariableElimination
 
 # --- BACKEND: KI-MODELL (Bayessches Netzwerk) ---
 def setup_model():
-    # Struktur definieren
-    model = BayesianNetwork([
+    # Struktur definieren mit der neuen Klasse DiscreteBayesianNetwork
+    model = DiscreteBayesianNetwork([
         ('Age', 'State'),
         ('Load', 'State'),
         ('Therm', 'State'),
@@ -21,8 +21,7 @@ def setup_model():
     cpd_therm = TabularCPD(variable='Therm', variable_card=2, values=[[0.9], [0.1]])
     cpd_cool = TabularCPD(variable='Cool', variable_card=2, values=[[0.95], [0.05]])
 
-    # Die State-CPT wurde für höhere Dynamik optimiert (Präzise Sprünge)
-    # Kombinationen führen nun zu exponentiell höheren Werten
+    # Dynamische State-CPT (Werte gespreizt für deutliche XAI-Sprünge)
     cpd_state = TabularCPD(
         variable='State', variable_card=2,
         values=[
@@ -54,7 +53,7 @@ cool_on = st.sidebar.toggle("Kühlung Aktiv", value=True)
 gain = st.sidebar.slider("Last-Gain (Sensitivität)", 1.0, 5.0, 2.5)
 cycles = st.sidebar.number_input("Zykluszähler", 0, 1000, 0)
 
-# Physik-Simulation (Vereinfacht)
+# Physik-Simulation
 k_c11 = 3400 if material == "Inconel" else 1900
 md = (k_c11 * (f**0.8) * (d**2)) / 4000
 temp_base = (vc * f * k_c11) / 100
@@ -84,10 +83,10 @@ with col2:
 
 st.subheader("XAI-Logbuch (Echtzeit-Analyse)")
 st.code(f"""
-[STATUS] Age: {'ALT' if age_state else 'NEU'}
-[STATUS] Load: {'HOCH' if load_state else 'NORMAL'}
-[STATUS] Therm: {'KRITISCH' if therm_state else 'NORMAL'}
-[STATUS] Cool: {'AUS' if cool_state else 'AN'}
+[STATUS] Age: {'ALT' if age_state else 'NEU'} (Trigger: Zyklen)
+[STATUS] Load: {'HOCH' if load_state else 'NORMAL'} (Trigger: Md)
+[STATUS] Therm: {'KRITISCH' if therm_state else 'NORMAL'} (Trigger: Temp)
+[STATUS] Cool: {'AUS' if cool_state else 'AN'} (Trigger: Schalter)
 --------------------------------------------------
 [INFERENZ] Berechnetes Risiko: {risk:.1f}%
 """)
