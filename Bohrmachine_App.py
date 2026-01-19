@@ -35,7 +35,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 
-# --- 2. KI-ENGINE (Logik-Update) ---
+# --- 2. KI-ENGINE (Dynamik-Update) ---
 @st.cache_resource
 def get_engine():
     model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
@@ -49,18 +49,20 @@ def get_engine():
         for load in range(2):
             for therm in range(2):
                 for cool in range(2):
-                    # Risiko-Score: Gewichtung der Faktoren
-                    score = (age * 3) + (load * 4) + (therm * 5) + (cool * 6)
-                    if score <= 2:
-                        v = [0.98, 0.01, 0.01]
-                    elif score <= 6:
-                        v = [0.70, 0.25, 0.05]
-                    elif score <= 10:
-                        v = [0.30, 0.40, 0.30]
-                    elif score <= 14:
-                        v = [0.10, 0.30, 0.60]
+                    # Risiko-Score mit progressiver Gewichtung für mehr Dynamik
+                    # Faktoren werden nun stärker gewichtet (Therm & Cool haben Priorität)
+                    score = (age * 2) + (load * 4) + (therm * 7) + (cool * 8)
+                    
+                    if score <= 3:
+                        v = [0.99, 0.005, 0.005]  # Sicherer Betrieb
+                    elif score <= 8:
+                        v = [0.60, 0.35, 0.05]   # Erste Warnstufe
+                    elif score <= 12:
+                        v = [0.15, 0.45, 0.40]   # Akute Gefahr (Sprung im Risiko)
+                    elif score <= 16:
+                        v = [0.05, 0.15, 0.80]   # Fast sicher kritisch
                     else:
-                        v = [0.01, 0.04, 0.95]
+                        v = [0.01, 0.04, 0.95]   # Unvermeidbarer Bruch
                     z_matrix.append(v)
 
     cpd_state = TabularCPD('State', 3, np.array(z_matrix).T, ['Age', 'Load', 'Therm', 'Cool'], [3, 2, 2, 2])
@@ -97,17 +99,21 @@ with st.sidebar:
     sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
     sens_vib = st.slider("Vibrations-Empfindlichkeit", 0.1, 5.0, 1.0)
 
-# --- 5. LOGIK ---
+# --- 5. LOGIK (Dynamische Physik & KI) ---
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
 
-    # Physik
+    # Physik (Verschleiß reagiert dynamischer auf vc)
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
-    s['wear'] += ((mat['wear_rate'] * (vc ** 1.6) * f) / (15000 if cooling else 400)) * cycle_step
+    s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300)) * cycle_step
+    
+    # Thermische Dynamik mit leichtem Rauschen für Realismus
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
-    s['t_current'] += (target_t - s['t_current']) * 0.15
+    noise = s['seed'].normal(0, 0.4)
+    s['t_current'] += (target_t - s['t_current']) * 0.2 + noise
+    
     amp = (((0.005 + (s['wear'] * 0.002)) * 10) + s['seed'].normal(0, 0.01)) * sens_vib
 
     # KI-Kategorisierung
@@ -117,10 +123,12 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     cool_cat = 0 if cooling else 1
 
     engine = get_engine()
-    risk = \
-    engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
+    # Inferenz zieht nun das Risiko aus der State-Verteilung (v[2] ist 'Kritisch')
+    risk = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
 
-    if risk > 0.98 or s['wear'] > 100: s['broken'] = True; s['active'] = False
+    if risk > 0.98 or s['wear'] > 100: 
+        s['broken'] = True
+        s['active'] = False
 
     # XAI Logging
     age_txt = ["Neu", "Mittel", "Alt"][age_cat]
@@ -131,7 +139,7 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     zeit = time.strftime("%H:%M:%S")
     s['history'].append({'c': s['cycle'], 'r': risk, 'w': s['wear'], 't': s['t_current'], 'amp': amp, 'mc': mc_raw})
     s['logs'].insert(0,
-                     f"[{zeit}] ZYK {s['cycle']} (+{cycle_step}) | RISIKO: {risk:.1%} | Md: {mc_raw:.1f}Nm | Vib: {amp:.2f}mm/s\n ➔ KI-LOGIK: [Alter: {age_txt} | Last: {load_txt} | Temp: {therm_txt} | Kühlung: {cool_txt}]")
+                     f"[{zeit}] ZYK {s['cycle']} | RISIKO: {risk:.1%} | Md: {mc_raw:.1f}Nm\n ➔ KI-LOGIK: [Alter: {age_txt} | Last: {load_txt} | Temp: {therm_txt} | Cool: {cool_txt}]")
 
 # --- 6. UI ---
 st.title("KI-ZWILLING | BOHRSYSTEM v21.8.2")
@@ -151,7 +159,8 @@ with col_metrics:
 with col_main:
     ttf = "---"
     if len(st.session_state.twin['history']) > 3:
-        df_calc = pd.DataFrame(st.session_state.twin['history'])
+        # Dynamischere TTF durch Fokus auf letzte 15 Einträge
+        df_calc = pd.DataFrame(st.session_state.twin['history'][-15:])
         z = np.polyfit(df_calc['c'], df_calc['w'], 1)
         ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.000001, z[0])))
     st.markdown(
@@ -177,8 +186,8 @@ with col_logs:
     st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
 
 st.divider()
-if st.button("▶ START / STOPP", use_container_width=True): st.session_state.twin['active'] = not st.session_state.twin[
-    'active']
+if st.button("▶ START / STOPP", use_container_width=True): 
+    st.session_state.twin['active'] = not st.session_state.twin['active']
 if st.button("🔄 RESET", use_container_width=True):
     st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False,
                              't_current': 22.0, 'seed': np.random.RandomState(42)}
