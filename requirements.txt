@@ -1,4 +1,3 @@
-pgmpy
 streamlit
 pandas
 numpy
