@@ -18,6 +18,10 @@ st.markdown("""
     }
     .val-title { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.2px; }
     .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 800; }
+    .evidenz-badge {
+        font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; background: rgba(88, 166, 255, 0.2);
+        color: #58a6ff; border: 1px solid #58a6ff; margin-right: 4px;
+    }
     .emergency-alert {
         background: #f85149; color: white; padding: 15px; border-radius: 8px; 
         font-weight: bold; text-align: center; margin-bottom: 20px;
@@ -29,10 +33,24 @@ st.markdown("""
 
 # --- 2. KI-LOGIK (MULTIVARIATE INFERENZ) ---
 def calculate_risk_inference(alter, last, thermik, vibration, kss_ausfall, integritaet):
-    # Logistische Regressions-Inferenz für die Bruchprognose
-    z = (alter * 1.5) + (last * 2.8) + (thermik * 4.2) + (vibration * 3.5) + (kss_ausfall * 5.0) + ((100 - integritaet) * 0.12)
+    # Gewichtete Logik-Faktoren für XAI-Evidenz
+    w = [1.5, 2.8, 4.2, 3.5, 5.0, 0.12]
+    scores = [
+        alter * w[0], 
+        last * w[1], 
+        thermik * w[2], 
+        vibration * w[3], 
+        kss_ausfall * w[4], 
+        (100 - integritaet) * w[5]
+    ]
+    z = sum(scores)
     risk = 1 / (1 + np.exp(-(z - 8.0)))
-    return np.clip(risk, 0.001, 0.999)
+    
+    # Evidenz-Ranking (Welcher Faktor dominiert die Entscheidung?)
+    labels = ["Alter", "Last", "Thermik", "Vib", "KSS", "Struktur"]
+    evidenz = sorted(zip(labels, scores), key=lambda x: x[1], reverse=True)
+    
+    return np.clip(risk, 0.001, 0.999), evidenz
 
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
@@ -70,42 +88,37 @@ s = st.session_state.twin
 if s['active'] and not s['broken']:
     s['zyklus'] += zyklus_sprung
     
-    # Drehmoment-Berechnung (Zerspanungs-Last)
     kc = m['kc1.1'] * (f ** -m['mc'])
     drehmoment = (kc * f * (d/2) * (d/2)) / 1000 * sens_load 
     
-    # Verschleiß & Thermik
     v_zuwachs = ((m['rate'] * (vc**1.7) * f) / (12000 if kss else 300)) * zyklus_sprung
     s['verschleiss'] += v_zuwachs
     t_ziel = 22 + (s['verschleiss'] * 1.4) + (vc * 0.22) + (0 if kss else 280)
     s['thermik'] += (t_ziel - s['thermik']) * 0.25
     
-    # Vibration (Abhängig von Verschleiß und Last)
     vibr_base = (s['verschleiss'] * 0.08) + (vc * 0.015) + (drehmoment * 0.05)
     s['vibration'] = (vibr_base * sens_vibr) + s['seed'].normal(0, 0.25)
     s['vibration'] = max(0.1, s['vibration'])
     
-    # KI-Bruchrisiko Inferenz
-    s['risk'] = calculate_risk_inference(s['zyklus']/1000, drehmoment/60, s['thermik']/m['t_crit'], s['vibration']/10, 1.0 if not kss else 0.0, s['integritaet'])
+    # Inferenz mit Evidenz-Output
+    s['risk'], evidenz_list = calculate_risk_inference(s['zyklus']/1000, drehmoment/60, s['thermik']/m['t_crit'], s['vibration']/10, 1.0 if not kss else 0.0, s['integritaet'])
     
-    # Detaillierte XAI-Schadensberechnung
     loss_fatigue = (s['verschleiss'] / 100) * 0.04 * zyklus_sprung
     loss_load = (drehmoment / 100) * 0.01 * zyklus_sprung
     loss_thermal = (np.exp(max(0, s['thermik'] - m['t_crit']) / 45) - 1) * zyklus_sprung * 2
     loss_vibr = (s['vibration'] / 20) * 0.05 * zyklus_sprung
     
-    total_loss = loss_fatigue + loss_load + loss_thermal + loss_vibr
-    s['integritaet'] -= total_loss
-    
+    s['integritaet'] -= (loss_fatigue + loss_load + loss_thermal + loss_vibr)
     if s['integritaet'] <= 0: s['broken'], s['active'], s['integritaet'] = True, False, 0
 
     log = {
         'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'integ': s['integritaet'], 
         'last': drehmoment, 'temp': s['thermik'], 'vib': s['vibration'],
-        'f_loss': loss_fatigue, 'l_loss': loss_load, 't_loss': loss_thermal, 'v_loss': loss_vibr
+        'f_loss': loss_fatigue, 'l_loss': loss_load, 't_loss': loss_thermal, 'v_loss': loss_vibr,
+        'evidenz': evidenz_list[:3] # Top 3 Gründe
     }
     s['logs'].insert(0, log)
-    s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'l': drehmoment})
+    s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
 
 # --- 6. UI DASHBOARD ---
 tab1, tab2 = st.tabs(["📊 LIVE-PROZESS-ANALYSE", "🧪 EXPERIMENTELLES SZENARIO-LABOR"])
@@ -113,7 +126,6 @@ tab1, tab2 = st.tabs(["📊 LIVE-PROZESS-ANALYSE", "🧪 EXPERIMENTELLES SZENARI
 with tab1:
     if s['broken']: st.markdown('<div class="emergency-alert">🚨 KRITISCHER AUSFALL: WERKZEUG-INTEGRITÄT BEI 0%</div>', unsafe_allow_html=True)
     
-    # Metriken-Leiste
     m1, m2, m3, m4, m5 = st.columns(5)
     with m1: st.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.2f}%</span></div>', unsafe_allow_html=True)
     with m2: st.markdown(f'<div class="glass-card"><span class="val-title">Bruchrisiko</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
@@ -134,22 +146,23 @@ with tab1:
             st.plotly_chart(fig, use_container_width=True)
 
     with col_xai:
-        st.markdown("### 🔍 XAI-Deep-Monitor (Ursachen-Splitting)")
+        st.markdown("### 🔍 XAI-Deep-Monitor & KI-Evidenz")
         x_html = ""
         for l in s['logs'][:12]:
+            evidenz_badges = "".join([f'<span class="evidenz-badge">{e[0]}</span>' for e in l['evidenz']])
             x_html += f"""
             <div style="border-left: 4px solid #e3b341; background: rgba(255,255,255,0.05); padding: 12px; margin-bottom: 10px; border-radius: 4px; font-size: 12px;">
-                <div style="display:flex; justify-content:space-between;"><b>ZYKLUS-ZEIT: {l['zeit']}</b> <b>RISIKO: {l['risk']:.2%}</b></div>
-                <div style="margin-top:8px;">
-                    <span style="color:#f85149; font-weight:bold;">Integritäts-Verlust (Abzug pro Schritt):</span><br>
-                    <table style="width:100%; margin-top:5px; font-family:monospace;">
-                        <tr><td>• Ermüdung:</td><td style="text-align:right;">-{l['f_loss']:.5f}%</td></tr>
-                        <tr><td>• Last-Stress:</td><td style="text-align:right;">-{l['l_loss']:.5f}%</td></tr>
-                        <tr><td>• Thermik:</td><td style="text-align:right;">-{l['t_loss']:.5f}%</td></tr>
-                        <tr><td>• Vibration:</td><td style="text-align:right;">-{l['v_loss']:.5f}%</td></tr>
-                        <tr style="border-top:1px solid #777;"><td><b>SUMME:</b></td><td style="text-align:right;"><b>-{(l['f_loss']+l['l_loss']+l['t_loss']+l['v_loss']):.5f}%</b></td></tr>
-                    </table>
+                <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                    <b>ZEIT: {l['zeit']}</b> 
+                    <b style="color:#e3b341;">RISIKO: {l['risk']:.2%}</b>
                 </div>
+                <div style="margin-bottom:8px;">{evidenz_badges}</div>
+                <span style="color:#f85149; font-weight:bold;">Physikalischer Abzug:</span>
+                <table style="width:100%; font-family:monospace; font-size:11px; margin-top:4px;">
+                    <tr><td>Ermüdung/Thermik:</td><td style="text-align:right;">-{(l['f_loss']+l['t_loss']):.5f}%</td></tr>
+                    <tr><td>Last/Vibration:</td><td style="text-align:right;">-{(l['l_loss']+l['v_loss']):.5f}%</td></tr>
+                    <tr style="border-top:1px solid #555;"><td><b>GESAMTVERLUST:</b></td><td style="text-align:right;"><b>-{(l['f_loss']+l['l_loss']+l['t_loss']+l['v_loss']):.5f}%</b></td></tr>
+                </table>
             </div>"""
         st.components.v1.html(f'<div style="color:white; font-family:sans-serif; height:780px; overflow-y:auto; padding-right:5px;">{x_html}</div>', height=800)
 
@@ -157,20 +170,17 @@ with tab2:
     st.header("🧪 Was-Wäre-Wenn Simulations-Labor")
     sc1, sc2, sc3 = st.columns([1.2, 1.2, 2])
     with sc1:
-        st.subheader("Mechanische Last")
         sim_alter = st.slider("Werkzeug-Alter [Zyklen]", 0, 2000, 500)
         sim_last = st.slider("Zerspanungs-Last [Nm]", 0, 200, 40)
         sim_integ = st.slider("Vorschaden Integrität [%]", 0, 100, 100)
     with sc2:
-        st.subheader("Umgebung & Sensorik")
         sim_temp = st.slider("Thermik-Simulation [°C]", 20, 1000, 150)
         sim_vibr = st.slider("Vibrations-Level [mm/s]", 0.0, 20.0, 2.0)
         sim_kss = st.toggle("KSS-Totalausfall simulieren", value=False)
     with sc3:
-        r_sim = calculate_risk_inference(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 1.0 if sim_kss else 0.0, sim_integ)
-        st.markdown(f'<div class="glass-card" style="text-align:center;">Prognostiziertes Risikon<h1 style="color:#e3b341; font-size:5rem; margin:10px 0;">{r_sim:.2%}</h1></div>', unsafe_allow_html=True)
+        r_sim, evidenz_sim = calculate_risk_inference(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 1.0 if sim_kss else 0.0, sim_integ)
+        st.markdown(f'<div class="glass-card" style="text-align:center;">Prognostiziertes Risiko<h1 style="color:#e3b341; font-size:5rem; margin:10px 0;">{r_sim:.2%}</h1></div>', unsafe_allow_html=True)
         
-        # Impact Radar
         fig_radar = go.Figure(data=go.Scatterpolar(
             r=[sim_alter/20, sim_last/2, sim_temp/10, sim_vibr*5, (100 if sim_kss else 0)],
             theta=['Alter','Last','Thermik','Vibration','KSS-Fehler'], fill='toself', line=dict(color='#e3b341')
@@ -179,13 +189,10 @@ with tab2:
         st.plotly_chart(fig_radar, use_container_width=True)
 
 st.divider()
-col_b1, col_b2 = st.columns(2)
-with col_b1:
-    if st.button("▶ START / STOPP SIMULATION", use_container_width=True): s['active'] = not s['active']
-with col_b2:
-    if st.button("🔄 VOLLSTÄNDIGER RESET (NEUES WERKZEUG)", use_container_width=True):
-        st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42)}
-        st.rerun()
+if st.button("▶ START / STOPP SIMULATION", use_container_width=True): s['active'] = not s['active']
+if st.button("🔄 VOLLSTÄNDIGER RESET", use_container_width=True):
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42)}
+    st.rerun()
 
 if s['active']:
     time.sleep(sim_takt/1000)
