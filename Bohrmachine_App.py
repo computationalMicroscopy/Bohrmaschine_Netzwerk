@@ -26,16 +26,14 @@ st.markdown("""
         border: 2px solid #58a6ff; border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px;
     }
     .warning-card {
-        background: linear-gradient(135deg, rgba(248, 81, 73, 0.2) 0%, rgba(20, 0, 0, 0.8) 100%);
+        background: linear-gradient(135deg, rgba(248, 81, 73, 0.4) 0%, rgba(40, 0, 0, 0.9) 100%);
         border: 2px solid #f85149; border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px;
-        animation: pulse 2s infinite;
+        animation: pulse 1.5s infinite;
     }
-    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+    @keyframes pulse { 0% { box-shadow: 0 0 5px #f85149; } 50% { box-shadow: 0 0 25px #f85149; } 100% { box-shadow: 0 0 5px #f85149; } }
     .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
     .val-main { font-family: 'Inter', sans-serif; font-size: 2.8rem; font-weight: 800; margin: 5px 0; }
-    .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; text-shadow: 0 0 20px rgba(227, 179, 65, 0.4); }
-    .blue-glow { color: #58a6ff; text-shadow: 0 0 15px rgba(88, 166, 255, 0.5); }
-    .red-glow { color: #f85149; text-shadow: 0 0 15px rgba(248, 81, 73, 0.5); }
+    .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; }
     .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; height: 350px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; }
     </style>
     """, unsafe_allow_html=True)
@@ -48,7 +46,6 @@ def get_engine():
     cpd_load = TabularCPD('Load', 2, [[0.8], [0.2]])
     cpd_therm = TabularCPD('Therm', 2, [[0.9], [0.1]])
     cpd_cool = TabularCPD('Cool', 2, [[0.95], [0.05]])
-
     z_matrix = []
     for age in range(3):
         for load in range(2):
@@ -61,15 +58,16 @@ def get_engine():
                     elif score <= 16: v = [0.05, 0.15, 0.80]
                     else: v = [0.01, 0.04, 0.95]
                     z_matrix.append(v)
-
     cpd_state = TabularCPD('State', 3, np.array(z_matrix).T, ['Age', 'Load', 'Therm', 'Cool'], [3, 2, 2, 2])
     model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state)
     return VariableElimination(model)
 
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
-    st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False,
-                             't_current': 22.0, 'seed': np.random.RandomState(42), 'risk': 0.0}
+    st.session_state.twin = {
+        'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False,
+        't_current': 22.0, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0
+    }
 
 MATERIALIEN = {
     "Baustahl (S235JR)": {"kc1.1": 1900, "mc": 0.26, "wear_rate": 0.15, "temp_crit": 500},
@@ -78,16 +76,20 @@ MATERIALIEN = {
     "Titan-Legierung": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750}
 }
 
-# --- 4. SIDEBAR ---
+# --- 4. SIDEBAR (Wiederhergestellt & Erweitert) ---
 with st.sidebar:
-    st.header("⚙️ Parameter")
+    st.header("⚙️ Prozess-Parameter")
     mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
     mat = MATERIALIEN[mat_name]
     vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160)
     f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18)
     d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
     cooling = st.toggle("Kühlschmierung aktiv", value=True)
+    
     st.divider()
+    st.header("📡 Sensorik & Simulation")
+    sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
+    sens_vib = st.slider("Vibrations-Empfindlichkeit", 0.1, 5.0, 1.0)
     cycle_step = st.number_input("Schrittweite", 1, 50, 1)
     sim_speed = st.select_slider("Verzögerung (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
 
@@ -96,87 +98,94 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
 
-    # Physik
+    # Physikalische Berechnung
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
+    
+    # Verschleißentwicklung
     s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300)) * cycle_step
     
+    # Thermik
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.2 + s['seed'].normal(0, 0.4)
-    amp = (((0.005 + (s['wear'] * 0.002)) * 10) + s['seed'].normal(0, 0.01))
+    
+    # Vibration (nur für Visualisierung und Logik-Trigger)
+    amp = (((0.005 + (s['wear'] * 0.002)) * 10) + s['seed'].normal(0, 0.05)) * sens_vib
 
-    # KI Inferenz
+    # KI-Kategorisierung
     age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
-    load_cat = 1 if mc_raw > (d * 2.2) else 0
+    load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
     therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
     cool_cat = 0 if cooling else 1
 
     engine = get_engine()
     s['risk'] = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
 
-    # --- ERWEITERTE BRUCHLOGIK ---
-    # Wir würfeln gegen das Risiko: Je höher das Risiko, desto wahrscheinlicher der sofortige Bruch
-    break_chance = s['seed'].rand()
-    if break_chance < (s['risk'] * 0.15) or s['wear'] > 115: # 15% der Risiko-Wahrscheinlichkeit führt zum realen Bruch
+    # --- VERBESSERTE BRUCHLOGIK (INTEGRITÄTS-AKKUMULATOR) ---
+    # Risiko unter 50% führt fast nie zum Bruch. Über 50% sinkt die Integrität.
+    if s['risk'] > 0.50:
+        damage = (s['risk'] ** 2) * (cycle_step / 2) # Exponentielles Schadensmodell
+        s['integrity'] -= damage
+    
+    # Zufälliger "Schock-Bruch" nur bei extrem hohem Risiko
+    shock_event = s['seed'].rand() < (s['risk'] * 0.02) if s['risk'] > 0.85 else False
+
+    if s['integrity'] <= 0 or s['wear'] > 120 or shock_event:
         s['broken'] = True
         s['active'] = False
-        s['logs'].insert(0, f"🛑 !!! KATASTROPHALER AUSFALL BEI ZYKLUS {s['cycle']} !!!")
+        s['logs'].insert(0, f"💥 KRITISCHER BRUCH BEI ZYKLUS {s['cycle']}!")
 
     zeit = time.strftime("%H:%M:%S")
-    s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'mc': mc_raw})
-    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} | RISIKO: {s['risk']:.1%} | Md: {mc_raw:.1f}Nm")
+    s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'i': s['integrity']})
+    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} | Risiko: {s['risk']:.1%} | Struktur: {max(0, s['integrity']):.1f}%")
 
 # --- 6. UI ---
-st.title("KI - Digital Twin: Bohrer-Überwachung")
+st.title("KI - Digital Twin: Bohrer-Simulation")
 
 if st.session_state.twin['broken']:
-    st.error("🚨 BOHRER GEBROCHEN! Maschine gestoppt. Bitte Reset durchführen.", icon="💥")
+    st.error("🚨 WERKZEUGGEGENSTAND ZERSTÖRT! Simulation angehalten.", icon="💥")
 
 col_metrics, col_main, col_logs = st.columns([1, 2, 1])
 
 with col_metrics:
     st.markdown(f'<div class="glass-card"><span class="val-title">Zyklus</span><br><span class="val-main blue-glow">{st.session_state.twin["cycle"]}</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{st.session_state.twin["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Struktur-Integrität</span><br><span class="val-main" style="color:#3fb950">{max(0, st.session_state.twin["integrity"]):.1f} %</span></div>', unsafe_allow_html=True)
 
 with col_main:
-    # Warnung vs. Prediction
-    if st.session_state.twin['risk'] > 0.7:
-        card_class = "warning-card"
-        title = "⚠️ KRITISCHER ZUSTAND - BRUCHGEFAHR"
-    else:
-        card_class = "predictive-card"
-        title = "🔮 Predictive Maintenance TTF"
+    # Warn-Logik für UI
+    is_critical = st.session_state.twin['risk'] > 0.75 or st.session_state.twin['integrity'] < 30
+    card_style = "warning-card" if is_critical else "predictive-card"
+    card_title = "⚠️ ACHTUNG: KRITISCHER BEREICH" if is_critical else "🔮 Predictive Maintenance"
 
     ttf = "---"
-    if len(st.session_state.twin['history']) > 3:
-        df_calc = pd.DataFrame(st.session_state.twin['history'][-15:])
-        z = np.polyfit(df_calc['c'], df_calc['w'], 1)
-        ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.000001, z[0])))
-    
-    st.markdown(f'<div class="{card_class}"><span class="val-title">{title}</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Restzyklen (geschätzt)</span></div>', unsafe_allow_html=True)
+    if len(st.session_state.twin['history']) > 5:
+        df_h = pd.DataFrame(st.session_state.twin['history'])
+        z = np.polyfit(df_h['c'], df_h['w'], 1)
+        ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.00001, z[0])))
+
+    st.markdown(f'<div class="{card_style}"><span class="val-title">{card_title}</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis empf. Wartung</span></div>', unsafe_allow_html=True)
 
     if len(st.session_state.twin['history']) > 0:
         df_p = pd.DataFrame(st.session_state.twin['history'])
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
-        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r'] * 100, fill='tozeroy', name="Bruchrisiko %", line=dict(color='#f85149')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['w'], name="Verschleiß %", line=dict(color='#e3b341')), row=2, col=1)
-        fig.update_layout(height=350, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=0, b=0))
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r']*100, name="Risiko %", line=dict(color='#f85149', width=3)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['i'], name="Integrität %", fill='tozeroy', line=dict(color='#3fb950')), row=2, col=1)
+        fig.update_layout(height=400, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, use_container_width=True)
 
 with col_logs:
-    st.markdown('<p class="val-title">System-Logs</p>', unsafe_allow_html=True)
-    log_txt = "".join([f"<div style='margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:4px; color:{'#f85149' if '!!!' in l else '#3fb950'}; font-family:monospace;'>{l}</div>" for l in st.session_state.twin['logs'][:40]])
-    st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
+    st.markdown('<p class="val-title">Live-Inferenz & Sensorik</p>', unsafe_allow_html=True)
+    log_content = "".join([f"<div style='color:{'#f85149' if '💥' in l else '#3fb950'}; font-family:monospace; font-size:0.75rem; border-bottom:1px solid #333;'>{l}</div>" for l in st.session_state.twin['logs'][:30]])
+    st.markdown(f'<div class="terminal">{log_content}</div>', unsafe_allow_html=True)
 
 st.divider()
 c1, c2 = st.columns(2)
 with c1:
-    if st.button("▶ START / STOPP", use_container_width=True, disabled=st.session_state.twin['broken']):
-        st.session_state.twin['active'] = not st.session_state.twin['active']
+    st.button("▶ START / STOPP", use_container_width=True, on_click=lambda: st.session_state.twin.update({'active': not st.session_state.twin['active']}))
 with c2:
-    if st.button("🔄 RESET / WERKZEUGWECHSEL", use_container_width=True):
-        st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'seed': np.random.RandomState(42), 'risk': 0.0}
+    if st.button("🔄 VOLLSTÄNDIGER RESET", use_container_width=True):
+        st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
         st.rerun()
 
 if st.session_state.twin['active']:
