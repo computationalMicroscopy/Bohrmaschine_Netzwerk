@@ -6,11 +6,17 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & STYLING ---
-st.set_page_config(layout="wide", page_title="KI-Expertensystem Bohrtechnik PRO", page_icon="⚙️")
+# Titel im Browser-Tab geändert
+st.set_page_config(layout="wide", page_title="KI-Labor Bohrertechnik", page_icon="⚙️")
 
 st.markdown("""
     <style>
     .stApp { background-color: #05070a; color: #e1e4e8; }
+    .main-title {
+        font-size: 2.5rem; font-weight: 800; color: #e3b341;
+        margin-bottom: 20px; text-align: center; border-bottom: 2px solid #e3b341;
+        padding-bottom: 10px;
+    }
     .glass-card {
         background: rgba(23, 28, 36, 0.7);
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -34,13 +40,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-LOGIK (FEINJUSTIERTE INFERENZ) ---
+# Hauptüberschrift in der App
+st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow_html=True)
+
+# --- 2. KI-LOGIK (INFERENZ & ERKLÄRBARKEIT) ---
 def calculate_metrics(alter, last, thermik, vibration, kss_ausfall, integritaet):
-    # Gewichtung leicht gedämpft für realistischeren Anstieg
     w = [1.2, 2.4, 3.8, 3.0, 4.5, 0.10]
     scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kss_ausfall * w[4], (100 - integritaet) * w[5]]
     z = sum(scores)
-    # Schwellenwert von 8.0 auf 9.5 erhöht für "späteren" steilen Anstieg
     risk = 1 / (1 + np.exp(-(z - 9.5)))
     
     labels = ["Alterung (Zyklen)", "Mechanische Last (Drehmoment)", "Prozess-Thermik (Hitze)", "Vibrations-Trauma (Instabilität)", "KSS-Defizit (Kühlung)", "Vorschaden (Struktur)"]
@@ -48,7 +55,6 @@ def calculate_metrics(alter, last, thermik, vibration, kss_ausfall, integritaet)
     
     if risk > 0.98 or integritaet <= 0: zyklen_bis_wartung = 0
     else:
-        # Stabilere RUL-Berechnung
         verbleibend = max(0, (integritaet - 10) / max(0.01, (risk * 0.45)))
         zyklen_bis_wartung = int(verbleibend * 5.5)
         
