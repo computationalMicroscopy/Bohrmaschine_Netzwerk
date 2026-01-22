@@ -38,7 +38,6 @@ st.markdown("""
 # --- 2. KI-LOGIK (KONTINUIERLICH & XAI) ---
 def get_continuous_risk(age_norm, load_norm, therm_norm, cool_val, health_norm):
     """Berechnet ein stufenloses Risiko (0.0 - 1.0) mittels Sigmoid-Logik"""
-    # Gewichtung der Faktoren
     score = (age_norm * 1.2) + (load_norm * 2.5) + (therm_norm * 4.0) + (cool_val * 3.0) + ((1.0 - health_norm) * 5.0)
     risk = 1 / (1 + np.exp(-(score - 3.5))) 
     return np.clip(risk, 0.01, 0.99)
@@ -66,16 +65,14 @@ with st.sidebar:
     sim_speed = st.select_slider("Sim-Pause (ms)", options=[500, 200, 100, 50, 0], value=50)
 
 # --- 5. LOGIK (LIVE-SIMULATION) ---
-s = st.session_state.twin # Lokale Referenz für einfacheren Zugriff
+s = st.session_state.twin 
 
 if s['active'] and not s['broken']:
     s['cycle'] += 5
-    # Physik
     s['wear'] += (vc * f * mat['wear_mult']) if cooling else (vc * f * mat['wear_mult'] * 10)
     s['t_current'] = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['vib'] = (s['wear'] * 0.1) + (vc * 0.01) + s['seed'].normal(0, 0.3)
     
-    # KI-Berechnung
     s['risk'] = get_continuous_risk(
         age_norm = s['cycle']/800, 
         load_norm = (vc * f)/100, 
@@ -84,24 +81,17 @@ if s['active'] and not s['broken']:
         health_norm = s['integrity']/100
     )
     
-    # Schaden
     s['integrity'] -= (0.1 + (s['risk'] * 0.8))
     if s['integrity'] <= 0:
         s['broken'], s['active'], s['integrity'] = True, False, 0
 
-    # XAI-Textgenerierung
     reasons = []
     if s['t_current'] > mat['temp_crit']: reasons.append("Thermische Überlast")
     if s['risk'] > 0.6: reasons.append("KI warnt vor Strukturkollaps")
     if not cooling and vc > 200: reasons.append("Trockenlauf-Risiko")
     explanation = " & ".join(reasons) if reasons else "Stabiler Abtrag"
 
-    log_entry = {
-        'zeit': time.strftime("%H:%M:%S"), 
-        'risk': s['risk'], 
-        'integ': s['integrity'], 
-        'expl': explanation
-    }
+    log_entry = {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'integ': s['integrity'], 'expl': explanation}
     s['logs'].insert(0, log_entry)
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'i': s['integrity']})
 
@@ -116,7 +106,7 @@ with tab1:
     
     with c_met:
         st.markdown(f'<div class="glass-card"><b>Integrität</b><br><h2>{s["integrity"]:.1f}%</h2></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="glass-card"><b>KI-Risiko</b><br><h2>{s["risk"]:.1% Prime}</h2></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="glass-card"><b>KI-Risiko</b><br><h2>{s["risk"]:.1%}</h2></div>', unsafe_allow_html=True)
         st.markdown(f'<div class="glass-card"><b>Temperatur</b><br><h2>{s["t_current"]:.1f}°C</h2></div>', unsafe_allow_html=True)
 
     with c_graph:
@@ -137,8 +127,6 @@ with tab1:
 
 with tab2:
     st.header("🧪 Interaktives KI-Szenario")
-    st.write("Verändere die Parameter stufenlos und beobachte, wie die KI jede Nuance bewertet.")
-    
     cl1, cl2 = st.columns([1, 2])
     with cl1:
         sim_age = st.slider("Werkzeugalter (Zyklen)", 0, 1000, 200)
@@ -148,13 +136,11 @@ with tab2:
         sim_cool = st.toggle("Kühlung deaktiviert", value=False)
     
     with cl2:
-        # Live-Inferenz des Szenarios
         res_risk = get_continuous_risk(sim_age/800, sim_f*5, sim_temp/500, 1.0 if sim_cool else 0.0, sim_health/100)
-        
         fig_gauge = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = res_risk * 100,
-            title = {'text': "Wahrscheinlichkeit Werkzeugbruch (%)"},
+            title = {'text': "Bruch-Wahrscheinlichkeit (%)"},
             gauge = {
                 'axis': {'range': [0, 100]},
                 'bar': {'color': "red" if res_risk > 0.7 else "orange"},
@@ -168,8 +154,8 @@ with tab2:
         analysis = []
         if sim_health < 40: analysis.append("❌ **Vorschaden:** Die geringe Integrität ist der Haupttreiber des Risikos.")
         if sim_temp > 500: analysis.append("🔥 **Hitze:** Das Materialgefüge wird instabil.")
-        if sim_cool and sim_temp > 300: analysis.append("❄️ **Kühlung:** Fehlende Kühlung bei Hitze wird von der KI als kritisch eingestuft.")
-        if not analysis: analysis.append("✅ **Stabil:** Die Parameter liegen innerhalb der sicheren Betriebsgrenzen.")
+        if sim_cool and sim_temp > 300: analysis.append("❄️ **Kühlung:** Fehlende Kühlung bei Hitze wird kritisch bewertet.")
+        if not analysis: analysis.append("✅ **Stabil:** Sicherer Betriebsbereich.")
         for a in analysis: st.write(a)
 
 st.divider()
@@ -178,7 +164,7 @@ with col1:
     if st.button("▶ START / STOPP SIMULATION", use_container_width=True):
         st.session_state.twin['active'] = not st.session_state.twin['active']
 with col2:
-    if st.button("🔄 SYSTEM-RESET / NEUER BOHRER", use_container_width=True):
+    if st.button("🔄 SYSTEM-RESET", use_container_width=True):
         st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'vib': 0.1, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
         st.rerun()
 
