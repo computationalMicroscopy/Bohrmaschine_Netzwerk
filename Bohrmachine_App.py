@@ -30,6 +30,12 @@ st.markdown("""
         border: 2px solid #f85149; border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px;
         animation: pulse 1.5s infinite;
     }
+    .melt-warning {
+        background: #f85149; color: white; padding: 10px; border-radius: 10px; 
+        font-weight: bold; text-align: center; margin-bottom: 15px;
+        border: 2px solid #ffffff; animation: blinker 1s linear infinite;
+    }
+    @keyframes blinker { 50% { opacity: 0.5; } }
     @keyframes pulse { 0% { box-shadow: 0 0 5px #f85149; } 50% { box-shadow: 0 0 25px #f85149; } 100% { box-shadow: 0 0 5px #f85149; } }
     .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
     .val-main { font-family: 'Inter', sans-serif; font-size: 2.5rem; font-weight: 800; margin: 5px 0; }
@@ -39,7 +45,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-ENGINE ---
+# --- 2. KI-ENGINE (Unverändert) ---
 @st.cache_resource
 def get_engine():
     model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
@@ -86,7 +92,6 @@ with st.sidebar:
     f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18)
     d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
     cooling = st.toggle("Kühlschmierung aktiv", value=True)
-    
     st.divider()
     st.header("📡 Sensor-Konfiguration")
     sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
@@ -98,42 +103,28 @@ with st.sidebar:
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
-
-    # Physik & Verschleiß
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
     s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300)) * cycle_step
-    
-    # Thermische Dynamik
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.2 + s['seed'].normal(0, 0.4)
-    
-    # KI Inferenz
     age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
     load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
     therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
     cool_cat = 0 if cooling else 1
-
     engine = get_engine()
     s['risk'] = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
-
-    # Integritätsverlust (Ermüdung + Risiko-Schaden)
     fatigue = (s['wear'] / 100) * 0.05 * cycle_step
     acute_damage = (s['risk'] ** 3) * 0.5 * cycle_step if s['risk'] > 0.4 else 0
     s['integrity'] -= (fatigue + acute_damage)
-
-    # Bruch-Check
     if s['integrity'] <= 0:
         s['broken'] = True
         s['active'] = False
         s['integrity'] = 0
-
-    # XAI Logging
     zeit = time.strftime("%H:%M:%S")
     age_lbl = ["NEU", "GEBRAUCHT", "ALT"][age_cat]
     load_lbl = "HOCH" if load_cat else "NORMAL"
     therm_lbl = "KRITISCH" if therm_cat else "STABIL"
-    
     log_entry = (
         f"[{zeit}] ZYK {s['cycle']} | <b>STATUS: {'⚠️ GEFAHR' if s['risk'] > 0.6 else 'OK'}</b><br>"
         f"➔ <span class='xai-tag'>INTEGRITÄT:</span> {s['integrity']:.2f}% | <span class='xai-tag'>RISIKO:</span> {s['risk']:.1%}<br>"
@@ -145,6 +136,10 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
 
 # --- 6. UI ---
 st.title("KI - Digital Twin: XAI Drill Monitoring & Analysis")
+
+# NEU: Schmelztemperatur-Warnanzeige
+if st.session_state.twin['t_current'] >= mat['temp_crit'] and not st.session_state.twin['broken']:
+    st.markdown(f'<div class="melt-warning">🔥 KRITISCHE TEMPERATUR: SCHMELZPUNKT ({mat["temp_crit"]}°C) ERREICHT!</div>', unsafe_allow_html=True)
 
 if st.session_state.twin['broken']:
     st.error("🚨 KATASTROPHALER WERKZEUGAUSFALL: Strukturintegrität bei 0%!", icon="💥")
@@ -158,23 +153,13 @@ with col_metrics:
     st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
 
 with col_main:
-    # TTF Berechnung (Predictive Maintenance)
     ttf = "---"
     if len(st.session_state.twin['history']) > 5:
         df_h = pd.DataFrame(st.session_state.twin['history'])
         z = np.polyfit(df_h['c'], df_h['w'], 1)
-        # Zyklen bis 100% Verschleiß erreicht sind
         ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.00001, z[0])))
-
     is_critical = st.session_state.twin['risk'] > 0.7 or st.session_state.twin['integrity'] < 40
-    st.markdown(
-        f'<div class="{"warning-card" if is_critical else "predictive-card"}">'
-        f'<span class="val-title">🔮 Predictive Maintenance TTF</span><br>'
-        f'<div class="ttf-val">{ttf}</div>'
-        f'<span class="val-title">Zyklen bis empfohlener Wartung</span></div>', 
-        unsafe_allow_html=True
-    )
-
+    st.markdown(f'<div class="{"warning-card" if is_critical else "predictive-card"}"><span class="val-title">🔮 Predictive Maintenance TTF</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis empfohlener Wartung</span></div>', unsafe_allow_html=True)
     if len(st.session_state.twin['history']) > 0:
         df_p = pd.DataFrame(st.session_state.twin['history'])
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05)
