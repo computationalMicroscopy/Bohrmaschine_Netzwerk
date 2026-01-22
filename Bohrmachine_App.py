@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI - Digital Twin: XAI Drill Monitoring", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI - Digital Twin: Full XAI Drill Monitoring", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -40,12 +40,13 @@ st.markdown("""
     .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
     .val-main { font-family: 'Inter', sans-serif; font-size: 2.5rem; font-weight: 800; margin: 5px 0; }
     .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; }
-    .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; height: 450px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; line-height: 1.4; }
-    .xai-tag { color: #e3b341; font-weight: bold; }
+    .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; height: 480px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; line-height: 1.6; }
+    .xai-tag { color: #e3b341; font-weight: bold; font-size: 0.7rem; }
+    .xai-val { color: #58a6ff; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-ENGINE ---
+# --- 2. KI-ENGINE (Original Wahrscheinlichkeiten) ---
 @st.cache_resource
 def get_engine():
     model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
@@ -104,12 +105,10 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
     
-    # Physik & Verschleiß
+    # Physik
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
     s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300)) * cycle_step
-    
-    # Thermik
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.2 + s['seed'].normal(0, 0.4)
     
@@ -121,46 +120,52 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     engine = get_engine()
     s['risk'] = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
 
-    # --- ERWEITERTE INTEGRITÄTSLOGIK (EXPONENTIELLER THERMISCHER ABFALL) ---
+    # Schadensmodell
     fatigue = (s['wear'] / 100) * 0.05 * cycle_step
     acute_damage = (s['risk'] ** 3) * 0.5 * cycle_step if s['risk'] > 0.4 else 0
     
-    # Thermischer Exponent: Steigt massiv an, wenn T > T_crit
     thermal_collapse = 0
     if s['t_current'] >= mat['temp_crit']:
-        # Exponentielle Funktion der Temperaturdifferenz
         t_diff = s['t_current'] - mat['temp_crit']
         thermal_collapse = (np.exp(t_diff / 50) - 1) * cycle_step * 2
     
     s['integrity'] -= (fatigue + acute_damage + thermal_collapse)
-
-    # Bruch-Check
     if s['integrity'] <= 0:
         s['broken'] = True
         s['active'] = False
         s['integrity'] = 0
 
-    # Logging
+    # VOLLSTÄNDIGES XAI LOGGING
     zeit = time.strftime("%H:%M:%S")
-    log_entry = (
-        f"[{zeit}] ZYK {s['cycle']} | <b>STATUS: {'⚠️ KRITISCH' if s['t_current'] >= mat['temp_crit'] else 'OK'}</b><br>"
-        f"➔ <span class='xai-tag'>INTEGRITÄT:</span> {max(0, s['integrity']):.2f}% | "
-        f"<span class='xai-tag'>THERMISCHER ABFALL:</span> {'AKTIV' if thermal_collapse > 0 else 'INAKTIV'}<br>"
-        f"➔ <span class='xai-tag'>SENSORDATEN:</span> Temp: {s['t_current']:.1f}°C / {mat['temp_crit']}°C | Md: {mc_raw:.1f}Nm"
-    )
+    age_lbl = ["NEU", "GEBRAUCHT", "ALT"][age_cat]
+    load_lbl = "HOCH" if load_cat else "NORMAL"
+    therm_lbl = "SCHMELZPUNKT!" if s['t_current'] >= mat['temp_crit'] else ("HEISS" if therm_cat else "NORMAL")
+    
+    log_entry = f"""
+    <div style='margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:8px;'>
+        <b style='color:#58a6ff;'>[{zeit}] ZYKLUS {s['cycle']}</b> | 
+        <b style='color:{"#f85149" if s['risk'] > 0.6 else "#3fb950"};'>STATUS: {"GEFAHR" if s['risk'] > 0.6 else "NOMINAL"}</b><br>
+        <span class='xai-tag'>INTEGRITÄT:</span> <span class='xai-val'>{s['integrity']:.2f}%</span> | 
+        <span class='xai-tag'>RISIKO:</span> <span class='xai-val'>{s['risk']:.1%}</span><br>
+        <span class='xai-tag'>KI-EVIDENZ:</span> [Alter: {age_lbl} | Last: {load_lbl} | Thermik: {therm_lbl} | Kühlung: {'AKTIV' if cooling else 'AUS'}]<br>
+        <span class='xai-tag'>PHYSIK:</span> Temp: {s['t_current']:.1f}°C | Drehmoment: {mc_raw:.1f}Nm | Verschleiß: {s['wear']:.1f}%<br>
+        <span class='xai-tag'>SCHADENS-INPUT:</span> Ermüdung: -{fatigue:.4f} | Last-Peak: -{acute_damage:.4f} | 
+        <b style='color:#f85149;'>Therm. Kollaps: -{thermal_collapse:.4f}</b>
+    </div>
+    """
     s['logs'].insert(0, log_entry)
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'i': s['integrity']})
 
 # --- 6. UI ---
-st.title("KI - Digital Twin: XAI Drill Monitoring & Analysis")
+st.title("KI - Digital Twin: Full XAI Drill Monitoring & Analysis")
 
 if st.session_state.twin['t_current'] >= mat['temp_crit'] and not st.session_state.twin['broken']:
-    st.markdown(f'<div class="melt-warning">🔥 MATERIALVERSAGEN: EXTREMER STRUKTURVERLUST DURCH SCHMELZTEMPERATUR!</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="melt-warning">🔥 MATERIAL-KOLLAPS: TEMPERATUR ÜBER SCHMELZPUNKT ({mat["temp_crit"]}°C)!</div>', unsafe_allow_html=True)
 
 if st.session_state.twin['broken']:
     st.error("🚨 KATASTROPHALER WERKZEUGAUSFALL: Strukturintegrität bei 0%!", icon="💥")
 
-col_metrics, col_main, col_logs = st.columns([1, 2, 1.2])
+col_metrics, col_main, col_logs = st.columns([1, 2, 1.4])
 
 with col_metrics:
     st.markdown(f'<div class="glass-card"><span class="val-title">Zyklus</span><br><span class="val-main" style="color:#58a6ff">{st.session_state.twin["cycle"]}</span></div>', unsafe_allow_html=True)
@@ -174,8 +179,10 @@ with col_main:
         df_h = pd.DataFrame(st.session_state.twin['history'])
         z = np.polyfit(df_h['c'], df_h['w'], 1)
         ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.00001, z[0])))
-    is_critical = st.session_state.twin['risk'] > 0.7 or st.session_state.twin['integrity'] < 40 or st.session_state.twin['t_current'] >= mat['temp_crit']
+    
+    is_critical = st.session_state.twin['risk'] > 0.7 or st.session_state.twin['integrity'] < 40
     st.markdown(f'<div class="{"warning-card" if is_critical else "predictive-card"}"><span class="val-title">🔮 Predictive Maintenance TTF</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis empfohlener Wartung</span></div>', unsafe_allow_html=True)
+    
     if len(st.session_state.twin['history']) > 0:
         df_p = pd.DataFrame(st.session_state.twin['history'])
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05)
@@ -187,7 +194,7 @@ with col_main:
 
 with col_logs:
     st.markdown('<p class="val-title">Echtzeit XAI-System Monitor</p>', unsafe_allow_html=True)
-    log_html = "".join([f"<div style='margin-bottom:12px; border-bottom:1px solid #30363d; padding-bottom:8px;'>{l}</div>" for l in st.session_state.twin['logs'][:25]])
+    log_html = "".join(st.session_state.twin['logs'][:20])
     st.markdown(f'<div class="terminal">{log_html}</div>', unsafe_allow_html=True)
 
 st.divider()
@@ -196,7 +203,7 @@ with c1:
     if st.button("▶ START / STOPP", use_container_width=True, disabled=st.session_state.twin['broken']):
         st.session_state.twin['active'] = not st.session_state.twin['active']
 with c2:
-    if st.button("🔄 VOLLSTÄNDIGER RESET & REPARATUR", use_container_width=True):
+    if st.button("🔄 RESET & REPARATUR", use_container_width=True):
         st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
         st.rerun()
 
