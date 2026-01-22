@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 
-# --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI - Labor Bohrtechnik ULTIMATE PRO", page_icon="⚙️")
+# --- 1. SETUP & STYLING ---
+st.set_page_config(layout="wide", page_title="KI-Expertensystem Bohrtechnik", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -21,8 +21,8 @@ st.markdown("""
         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
         backdrop-filter: blur(4px); margin-bottom: 15px;
     }
-    .val-title { font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
-    .val-main { font-family: 'Inter', sans-serif; font-size: 2rem; font-weight: 800; margin: 0; }
+    .val-title { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
+    .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2.2rem; font-weight: 800; margin: 5px 0; }
     .emergency-alert {
         background: #f85149; color: white; padding: 20px; border-radius: 10px; 
         font-weight: bold; text-align: center; margin-bottom: 20px;
@@ -33,12 +33,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-LOGIK (KONTINUIERLICH) ---
-def get_continuous_risk(age_norm, load_norm, therm_norm, cool_val, health_norm):
-    # Sigmoid-Inferenz-Funktion
-    score = (age_norm * 1.5) + (load_norm * 3.0) + (therm_norm * 4.5) + (cool_val * 4.0) + ((1.0 - health_norm) * 6.0)
-    risk = 1 / (1 + np.exp(-(score - 4.5))) 
-    return np.clip(risk, 0.01, 0.99)
+# --- 2. KI-KERN (DYNAMISCHE INFERENZ) ---
+def get_inference_risk(age_val, load_val, therm_val, cool_val, health_val):
+    """ Berechnet ein präzises, stufenloses Risiko basierend auf gewichteter Inferenz """
+    # Skalierung der Eingänge auf ein logistisches Modell (XAI-Simulation)
+    z = (age_val * 1.5) + (load_val * 3.5) + (therm_val * 5.0) + (cool_val * 4.0) + ((100 - health_val) * 0.08)
+    risk = 1 / (1 + np.exp(-(z - 6.5)))
+    return np.clip(risk, 0.001, 0.999)
 
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
@@ -48,65 +49,56 @@ if 'twin' not in st.session_state:
     }
 
 MATERIALIEN = {
-    "Baustahl (S235JR)": {"kc1.1": 1900, "mc": 0.26, "wear_rate": 0.15, "temp_crit": 450},
+    "Baustahl (S235JR)": {"kc1.1": 1900, "mc": 0.26, "wear_rate": 0.15, "temp_crit": 500},
     "Vergütungsstahl (42CrMo4)": {"kc1.1": 2100, "mc": 0.25, "wear_rate": 0.25, "temp_crit": 550},
     "Edelstahl (1.4404)": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.45, "temp_crit": 650},
-    "Titan-Legierung": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.2, "temp_crit": 750}
+    "Titan-Legierung": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750}
 }
 
-# --- 4. SIDEBAR ---
+# --- 4. SIDEBAR (VOLLE KONTROLLE) ---
 with st.sidebar:
-    st.header("⚙️ Prozess-Eingriff")
+    st.header("⚙️ Prozess-Steuerung")
     mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
     mat = MATERIALIEN[mat_name]
-    vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160)
-    f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18)
-    d = st.number_input("Werkzeug-Ø [mm]", 1.0, 60.0, 12.0)
+    vc = st.slider("Schnittgeschw. vc [m/min]", 20, 550, 180)
+    f = st.slider("Vorschub f [mm/U]", 0.01, 1.2, 0.2)
+    d = st.number_input("Werkzeug-Ø [mm]", 1.0, 80.0, 12.0)
     cooling = st.toggle("Kühlschmierung aktiv", value=True)
-    
     st.divider()
-    st.header("📡 Sensorik & KI")
-    sens_vib = st.slider("Vibrations-Gain", 0.1, 5.0, 1.0)
-    sens_load = st.slider("Last-Gain", 0.1, 5.0, 1.0)
-    cycle_step = st.number_input("Schrittweite [Zyklen]", 1, 100, 10)
-    sim_speed = st.select_slider("Simulations-Takt (ms)", options=[1000, 500, 200, 100, 50, 0], value=100)
+    st.header("📡 Sensorik & Takt")
+    sens_vib = st.slider("Vibrations-Gain", 0.1, 10.0, 1.0)
+    sens_load = st.slider("Last-Gain", 0.1, 10.0, 1.0)
+    cycle_step = st.number_input("Schrittweite [Zyklen]", 1, 200, 10)
+    sim_speed = st.select_slider("Sim-Speed (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
 
-# --- 5. LOGIK ---
+# --- 5. LOGIK (VOLLE PHYSIK-ENGINE) ---
 s = st.session_state.twin
 if s['active'] and not s['broken']:
     s['cycle'] += cycle_step
     
-    # 1. Kraft & Last (Physik)
+    # 1. Kraft & Drehmoment
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
-    mc_raw = (fc * d) / 2000
+    mc_raw = (fc * d) / 2000 # Nm
     
     # 2. Verschleiß & Temperatur
-    wear_inc = ((mat['wear_rate'] * (vc ** 1.8) * f) / (12000 if cooling else 250)) * cycle_step
+    wear_inc = ((mat['wear_rate'] * (vc ** 1.9) * f) / (15000 if cooling else 200)) * cycle_step
     s['wear'] += wear_inc
-    target_t = 22 + (s['wear'] * 1.3) + (vc * 0.25) + (0 if cooling else 300)
-    s['t_current'] += (target_t - s['t_current']) * 0.3
+    target_t = 22 + (s['wear'] * 1.6) + (vc * 0.2) + (0 if cooling else 280)
+    s['t_current'] += (target_t - s['t_current']) * 0.25 + s['seed'].normal(0, 0.4)
     
-    # 3. Vibration
-    s['vib'] = ((s['wear'] * 0.06) + (vc * 0.015) + (100 - s['integrity']) * 0.25) * sens_vib + s['seed'].normal(0, 0.3)
-    s['vib'] = max(0.1, s['vib'])
-
-    # 4. KI-Inferenz (Normalisiertes Risiko)
-    s['risk'] = get_continuous_risk(
-        age_norm = s['cycle']/1000, 
-        load_norm = (mc_raw * sens_load)/60, 
-        therm_norm = s['t_current']/mat['temp_crit'], 
-        cool_val = 1.0 if not cooling else 0.0, 
-        health_norm = s['integrity']/100
-    )
+    # 3. Vibrationen
+    s['vib'] = ((s['wear'] * 0.08) + (vc * 0.012) + (100 - s['integrity']) * 0.3) * sens_vib + s['seed'].normal(0, 0.3)
     
-    # 5. Struktur-Schädigung (Die "Wahrheit" hinter dem Risiko)
-    f_loss = (s['wear'] / 100) * 0.04 * cycle_step # Ermüdung
-    a_loss = (s['risk'] ** 3.0) * 0.8 * cycle_step if s['risk'] > 0.2 else 0 # Akut-Last
-    t_loss = (np.exp(max(0, s['t_current'] - mat['temp_crit']) / 40) - 1) * cycle_step * 2 # Thermik
+    # 4. KI-Inferenz
+    s['risk'] = get_inference_risk(s['cycle']/800, (mc_raw*sens_load)/50, s['t_current']/mat['temp_crit'], 1.0 if not cooling else 0.0, s['integrity'])
+    
+    # 5. Struktur-Schaden (Detailliertes XAI-Modell)
+    f_loss = (s['wear'] / 100) * 0.03 * cycle_step
+    a_loss = (s['risk'] ** 2.8) * 0.9 * cycle_step if s['risk'] > 0.15 else 0
+    t_loss = (np.exp(max(0, s['t_current'] - mat['temp_crit']) / 45) - 1) * cycle_step * 3
     
     s['integrity'] -= (f_loss + a_loss + t_loss)
-    if s['integrity'] <= 0:
-        s['broken'], s['active'], s['integrity'] = True, False, 0
+    if s['integrity'] <= 0: s['broken'], s['active'], s['integrity'] = True, False, 0
 
     log_entry = {
         'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'integ': s['integrity'],
@@ -116,77 +108,102 @@ if s['active'] and not s['broken']:
     s['logs'].insert(0, log_entry)
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'i': s['integrity'], 't': s['t_current'], 'v': s['vib'], 'w': s['wear']})
 
-# --- 6. UI ---
-tab1, tab2 = st.tabs(["📊 LIVE-DASHBOARD", "🧪 SZENARIO-LABOR"])
+# --- 6. UI DASHBOARD ---
+tab1, tab2 = st.tabs(["📊 LIVE-PROZESS-MONITORING", "🧪 VOLLSTÄNDIGE WAS-WÄRE-WENN ANALYSE"])
 
 with tab1:
-    if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-CRASH: WERKZEUG GEBROCHEN</div>', unsafe_allow_html=True)
+    if s['broken']: st.markdown('<div class="emergency-alert">🚨 KRITISCHER FEHLER: WERKZEUG-BRUCH DETEKTIERT!</div>', unsafe_allow_html=True)
     
-    # Metriken Reihe
+    # Metriken (Großanzeige)
     m1, m2, m3, m4 = st.columns(4)
-    with m1: st.markdown(f'<div class="glass-card"><span class="val-title">Struktur</span><br><p class="val-main" style="color:#3fb950">{s["integrity"]:.1f}%</p></div>', unsafe_allow_html=True)
-    with m2: st.markdown(f'<div class="glass-card"><span class="val-title">KI-Risiko</span><br><p class="val-main" style="color:#e3b341">{s["risk"]:.1%}</p></div>', unsafe_allow_html=True)
+    with m1: st.markdown(f'<div class="glass-card"><span class="val-title">Struktur-Integrität</span><br><p class="val-main" style="color:#3fb950">{s["integrity"]:.2f}%</p></div>', unsafe_allow_html=True)
+    with m2: st.markdown(f'<div class="glass-card"><span class="val-title">KI-Bruchrisiko</span><br><p class="val-main" style="color:#e3b341">{s["risk"]:.2%}</p></div>', unsafe_allow_html=True)
     with m3: st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><p class="val-main" style="color:#f85149">{s["t_current"]:.1f}°C</p></div>', unsafe_allow_html=True)
-    with m4: st.markdown(f'<div class="glass-card"><span class="val-title">Vibration</span><br><p class="val-main" style="color:#58a6ff">{s["vib"]:.2f}</p></div>', unsafe_allow_html=True)
+    with m4: st.markdown(f'<div class="glass-card"><span class="val-title">Last (M_d)</span><br><p class="val-main" style="color:#58a6ff">{s["logs"][0]["mc"]:.2f} Nm</p></div>' if s['logs'] else '---', unsafe_allow_html=True)
 
-    col_gra, col_xai = st.columns([2.2, 1.8])
-    
-    with col_gra:
+    col_g, col_x = st.columns([2.3, 1.7])
+    with col_g:
         if s['history']:
             df = pd.DataFrame(s['history'])
-            fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03, subplot_titles=("Integrität", "Temperatur", "Vibrationen", "KI-Risiko %"))
-            fig.add_trace(go.Scatter(x=df['c'], y=df['i'], name="Integrität", fill='tozeroy', line=dict(color='#3fb950')), row=1, col=1)
+            fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03, subplot_titles=("Struktur-Gesundheit (%)", "Thermik (°C)", "Vibration (mm/s)", "KI-Risiko (%)"))
+            fig.add_trace(go.Scatter(x=df['c'], y=df['i'], name="Integrität", fill='tozeroy', line=dict(color='#3fb950', width=3)), row=1, col=1)
             fig.add_trace(go.Scatter(x=df['c'], y=df['t'], name="Temp", line=dict(color='#f85149')), row=2, col=1)
             fig.add_trace(go.Scatter(x=df['c'], y=df['v'], name="Vib", line=dict(color='#58a6ff')), row=3, col=1)
             fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, name="Risiko", line=dict(color='#e3b341')), row=4, col=1)
-            fig.update_layout(height=700, template="plotly_dark", showlegend=False, margin=dict(l=0,r=0,t=30,b=0))
+            fig.update_layout(height=750, template="plotly_dark", showlegend=False, margin=dict(l=0,r=0,t=30,b=0))
             st.plotly_chart(fig, use_container_width=True)
 
-    with col_xai:
-        st.markdown("### 🔍 XAI Deep-Monitor")
+    with col_x:
+        st.markdown("### 🔍 XAI-Matrix (Ursachen-Analyse)")
         x_html = ""
-        for l in s['logs'][:12]:
+        for l in s['logs'][:15]:
+            status_color = "#f85149" if l['risk'] > 0.6 else ("#e3b341" if l['risk'] > 0.2 else "#3fb950")
             x_html += f"""
-            <div style="border-left: 4px solid {"#f85149" if l['risk']>0.6 else "#3fb950"}; background: rgba(255,255,255,0.03); padding: 12px; margin-bottom: 10px; border-radius: 4px;">
-                <div style="display:flex; justify-content:space-between; font-size:12px;">
-                    <b style="color:#58a6ff;">ZEIT: {l['zeit']}</b>
-                    <b style="color:#e3b341;">RISIKO: {l['risk']:.1%}</b>
+            <div style="border-left: 5px solid {status_color}; background: rgba(255,255,255,0.04); padding: 15px; margin-bottom: 12px; border-radius: 5px;">
+                <div style="display:flex; justify-content:space-between; font-size:12px; opacity:0.8;">
+                    <b>ZYKLUS: {l['zeit']}</b>
+                    <b style="color:{status_color};">PROGNOSE: {l['risk']:.2%}</b>
                 </div>
-                <div style="margin-top:8px; font-size:13px;">
-                    <b>Physik-Status:</b> {l['temp']:.1f}°C | {l['vib']:.2f} mm/s | M_d: {l['mc']:.1f} Nm<br>
-                    <span style="color:#f85149; font-weight:bold;">Integritäts-Verlust:</span><br>
-                    <div style="padding-left:10px; font-family: monospace;">
-                    • Fatigue-Stress: -{l['f_loss']:.4f}%<br>
-                    • Akutlast-KI: -{l['a_loss']:.4f}%<br>
-                    • Thermik-Gefüge: -{l['t_loss']:.4f}%
+                <div style="margin-top:10px; font-size:13px;">
+                    <b>Sensorwerte:</b> {l['temp']:.1f}°C | {l['vib']:.2f} mm/s | {l['mc']:.2f} Nm<br>
+                    <hr style="border:0; border-top:1px solid #444; margin:8px 0;">
+                    <span style="color:#f85149; font-weight:bold;">Integritäts-Verlust Aufschlüsselung:</span><br>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; font-family: 'JetBrains Mono'; font-size:11px; margin-top:5px;">
+                        <span>Ermüdung:</span> <span>-{l['f_loss']:.5f}%</span>
+                        <span>Akutlast:</span> <span>-{l['a_loss']:.5f}%</span>
+                        <span>Thermik:</span> <span>-{l['t_loss']:.5f}%</span>
+                        <span style="font-weight:bold;">SUMME:</span> <span style="font-weight:bold;">-{(l['f_loss']+l['a_loss']+l['t_loss']):.5f}%</span>
                     </div>
                 </div>
             </div>"""
-        st.components.v1.html(f'<div style="color:white; font-family:sans-serif; height:680px; overflow-y:auto;">{x_html}</div>', height=700)
+        st.components.v1.html(f'<div style="color:white; font-family:sans-serif; height:730px; overflow-y:auto; padding-right:10px;">{x_html}</div>', height=750)
 
 with tab2:
-    st.header("🧪 Experimentelles Labor")
-    c1, c2, c3 = st.columns([1, 1, 2])
+    st.header("🧪 Was-Wäre-Wenn Simulations-Labor")
+    st.markdown("Testen Sie hier extreme Parameterkombinationen, um das Verhalten der KI-Inferenz zu verstehen.")
+    
+    c1, c2, c3 = st.columns([1.2, 1.2, 2.5])
+    
     with c1:
-        la_age = st.slider("Alter (Zyklen)", 0, 1500, 200)
-        la_h = st.slider("Integrität (%)", 0, 100, 100)
+        st.subheader("🔧 Mechanik & Alter")
+        sim_age = st.slider("Werkzeugalter [Zyklen]", 0, 2000, 500)
+        sim_f = st.slider("Vorschub-Last [mm/U]", 0.0, 1.5, 0.2)
+        sim_health = st.slider("Vorschaden (Integrität %)", 0, 100, 100)
+    
     with c2:
-        la_f = st.slider("Vorschub (mm/U)", 0.0, 1.2, 0.2)
-        la_t = st.slider("Temperatur (°C)", 20, 900, 100)
-        la_c = st.toggle("Keine Kühlung", value=False)
+        st.subheader("🔥 Thermik & Medium")
+        sim_temp = st.slider("Temperatur-Sensor [°C]", 20, 1000, 150)
+        sim_cool = st.checkbox("Kühlschmierung AUSGEFALLEN", value=False)
+        sim_load_gain = st.slider("Zusatz-Vibrationen", 0.0, 10.0, 1.0)
+    
     with c3:
-        risk_lab = get_continuous_risk(la_age/1000, la_f*3, la_t/500, 1.0 if la_c else 0.0, la_h/100)
-        st.markdown(f'<div class="glass-card" style="text-align:center;"><h3>KI-Einschätzung</h3><h1 style="color:#e3b341; font-size:4rem;">{risk_lab:.1%}</h1></div>', unsafe_allow_html=True)
-        if risk_lab > 0.8: st.error("Dringender Wartungsbedarf! Zusammenbruch steht bevor.")
-        elif risk_lab > 0.4: st.warning("Erhöhte Degradation. Parameter anpassen!")
-        else: st.success("Sicherer Prozessparameter.")
+        # Simulations-Berechnung
+        sim_risk = get_inference_risk(sim_age/800, sim_f*4, sim_temp/500, 1.0 if sim_cool else 0.0, sim_health)
+        
+        st.markdown(f'<div class="glass-card" style="text-align:center;">'
+                    f'<span class="val-title">Simulierte Bruchwahrscheinlichkeit</span><br>'
+                    f'<h1 style="font-size:5rem; color:{"#f85149" if sim_risk > 0.7 else "#e3b341"}; margin:20px 0;">{sim_risk:.2%}</h1>'
+                    f'</div>', unsafe_allow_html=True)
+        
+        # Expertensystem Begründung
+        st.markdown("### 🤖 KI-Logik-Begründung")
+        reasons = []
+        if sim_health < 30: reasons.append("❌ **Kritische Substanz:** Die verbleibende Integrität ist zu gering für mechanische Lasten.")
+        if sim_temp > 600: reasons.append("🔥 **Thermischer Stress:** Gefügeveränderungen durch Hitze dominieren das Risiko.")
+        if sim_age > 1200: reasons.append("⏳ **Degradation:** Das Werkzeug hat sein statistisches Lebensende erreicht.")
+        if sim_cool and sim_temp > 400: reasons.append("❄️ **Kühlung fehlt:** Ohne KSS ist kein stabiler Prozess möglich.")
+        if not reasons: reasons.append("✅ **Sicherer Bereich:** Alle Parameter sind innerhalb der Toleranzgrenzen.")
+        
+        for r in reasons:
+            st.write(r)
 
+# --- GLOBAL CONTROLS ---
 st.divider()
-b1, b2 = st.columns(2)
-with b1:
-    if st.button("▶ START / STOPP", use_container_width=True): s['active'] = not s['active']
-with b2:
-    if st.button("🔄 VOLLSTÄNDIGER SYSTEM-RESET", use_container_width=True):
+cl1, cl2 = st.columns(2)
+with cl1:
+    if st.button("▶ SIMULATION START / STOPP", use_container_width=True): s['active'] = not s['active']
+with cl2:
+    if st.button("🔄 VOLLSTÄNDIGER RESET (NEUES WERKZEUG)", use_container_width=True):
         st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'vib': 0.1, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
         st.rerun()
 
