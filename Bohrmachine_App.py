@@ -170,7 +170,7 @@ with col_haupt:
         ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.00001, z[0])))
     
     is_critical = st.session_state.twin['risk'] > 0.7 or st.session_state.twin['integrity'] < 40
-    st.markdown(f'<div class="{"warning-card" if is_critical else "predictive-card"}"><span class="val-title">🔮 Vorausschauende Wartung</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis empfohlener Wartung</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{"warning-card" if is_critical else "predictive-card"}"><span class="val-title">🔮 Vorausschauende Wartung (TTF)</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis empfohlener Wartung</span></div>', unsafe_allow_html=True)
     
     if len(st.session_state.twin['history']) > 0:
         df_p = pd.DataFrame(st.session_state.twin['history'])
