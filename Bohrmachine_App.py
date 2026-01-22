@@ -33,6 +33,7 @@ st.markdown("""
     @keyframes pulse { 0% { box-shadow: 0 0 5px #f85149; } 50% { box-shadow: 0 0 25px #f85149; } 100% { box-shadow: 0 0 5px #f85149; } }
     .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
     .val-main { font-family: 'Inter', sans-serif; font-size: 2.5rem; font-weight: 800; margin: 5px 0; }
+    .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; text-shadow: 0 0 20px rgba(227, 179, 65, 0.4); }
     .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; height: 450px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; line-height: 1.4; }
     .xai-tag { color: #e3b341; font-weight: bold; }
     </style>
@@ -102,10 +103,12 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
     s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300)) * cycle_step
+    
+    # Thermische Dynamik
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.2 + s['seed'].normal(0, 0.4)
     
-    # KI Inferenz Vorbereitung
+    # KI Inferenz
     age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
     load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
     therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
@@ -114,21 +117,18 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     engine = get_engine()
     s['risk'] = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
 
-    # --- VERBESSERTE INTEGRITÄTSLOGIK ---
-    # 1. Kontinuierliche Ermüdung durch Verschleiß
+    # Integritätsverlust (Ermüdung + Risiko-Schaden)
     fatigue = (s['wear'] / 100) * 0.05 * cycle_step
-    # 2. Akuter Schaden durch Risiko-Spitzen
     acute_damage = (s['risk'] ** 3) * 0.5 * cycle_step if s['risk'] > 0.4 else 0
-    
     s['integrity'] -= (fatigue + acute_damage)
 
-    # --- BRUCH-BEDINGUNG ---
+    # Bruch-Check
     if s['integrity'] <= 0:
         s['broken'] = True
         s['active'] = False
         s['integrity'] = 0
 
-    # --- XAI LOGGING (ERWEITERT) ---
+    # XAI Logging
     zeit = time.strftime("%H:%M:%S")
     age_lbl = ["NEU", "GEBRAUCHT", "ALT"][age_cat]
     load_lbl = "HOCH" if load_cat else "NORMAL"
@@ -154,18 +154,34 @@ col_metrics, col_main, col_logs = st.columns([1, 2, 1.2])
 with col_metrics:
     st.markdown(f'<div class="glass-card"><span class="val-title">Zyklus</span><br><span class="val-main" style="color:#58a6ff">{st.session_state.twin["cycle"]}</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="glass-card"><span class="val-title">Struktur-Integrität</span><br><span class="val-main" style="color:#3fb950">{max(0, st.session_state.twin["integrity"]):.1f} %</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="glass-card"><span class="val-title">Momentanes Risiko</span><br><span class="val-main" style="color:#f85149">{st.session_state.twin["risk"]:.1%}-</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Bohrertemperatur</span><br><span class="val-main" style="color:#f85149">{st.session_state.twin["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
 
 with col_main:
+    # TTF Berechnung (Predictive Maintenance)
+    ttf = "---"
+    if len(st.session_state.twin['history']) > 5:
+        df_h = pd.DataFrame(st.session_state.twin['history'])
+        z = np.polyfit(df_h['c'], df_h['w'], 1)
+        # Zyklen bis 100% Verschleiß erreicht sind
+        ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.00001, z[0])))
+
     is_critical = st.session_state.twin['risk'] > 0.7 or st.session_state.twin['integrity'] < 40
-    st.markdown(f'<div class="{"warning-card" if is_critical else "predictive-card"}"><span class="val-title">Zustand & Prognose</span><br><div style="font-size:3rem; font-weight:800; color:#e3b341;">{"WARTUNG SOFORT" if is_critical else "BETRIEB STABIL"}</div></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="{"warning-card" if is_critical else "predictive-card"}">'
+        f'<span class="val-title">🔮 Predictive Maintenance TTF</span><br>'
+        f'<div class="ttf-val">{ttf}</div>'
+        f'<span class="val-title">Zyklen bis empfohlener Wartung</span></div>', 
+        unsafe_allow_html=True
+    )
 
     if len(st.session_state.twin['history']) > 0:
         df_p = pd.DataFrame(st.session_state.twin['history'])
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08)
-        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['i'], name="Integrität", fill='tozeroy', line=dict(color='#3fb950')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r']*100, name="Bruchrisiko %", line=dict(color='#f85149')), row=2, col=1)
-        fig.update_layout(height=450, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0))
+        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['i'], name="Integrität %", fill='tozeroy', line=dict(color='#3fb950')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['t'], name="Temperatur °C", line=dict(color='#f85149')), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r']*100, name="Risiko %", line=dict(color='#e3b341')), row=3, col=1)
+        fig.update_layout(height=500, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig, use_container_width=True)
 
 with col_logs:
