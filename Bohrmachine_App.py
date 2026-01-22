@@ -25,8 +25,11 @@ st.markdown("""
         background: rgba(30, 35, 45, 0.9); border-left: 5px solid #e3b341;
         padding: 15px; border-radius: 8px; margin-bottom: 12px;
     }
-    .reason-text { color: #e1e4e8; font-size: 0.85rem; margin-top: 5px; line-height: 1.4; font-style: italic; }
-    .action-text { color: #58a6ff; font-weight: bold; font-size: 0.85rem; margin-top: 5px; }
+    .xai-feature-row { display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 2px; }
+    .xai-bar-bg { background: #30363d; height: 4px; width: 100%; border-radius: 2px; margin-top: 2px; }
+    .xai-bar-fill { background: #e3b341; height: 4px; border-radius: 2px; }
+    .reason-text { color: #e1e4e8; font-size: 0.85rem; margin-top: 8px; line-height: 1.4; font-weight: bold; }
+    .action-text { color: #58a6ff; font-weight: bold; font-size: 0.85rem; margin-top: 5px; border-top: 1px solid #30363d; padding-top: 5px; }
     .emergency-alert {
         background: #f85149; color: white; padding: 15px; border-radius: 8px; 
         font-weight: bold; text-align: center; margin-bottom: 20px;
@@ -39,22 +42,27 @@ st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow
 # --- 2. LOGIK-FUNKTIONEN ---
 def get_explanation(top_reason):
     mapping = {
-        "Material-Ermüdung": ("Die KI erkennt Mikrorisse im Werkzeugstahl.", "Tausche das Werkzeug bald aus."),
-        "Überlastung": ("Drehmoment zu hoch für diesen Durchmesser.", "Senke den Vorschub (f)."),
-        "Gefüge-Überhitzung": ("Stahl erreicht Anlasstemperatur und wird weich.", "Kühlung prüfen oder vc senken."),
-        "Resonanz-Instabilität": ("Schwingungen hämmern gegen die Schneidkante.", "Drehzahl leicht variieren."),
-        "Kühlungs-Defizit": ("Extreme Reibung – Späne könnten verschweißen.", "KSS-Zufuhr sofort prüfen!"),
-        "Struktur-Vorschaden": ("Vorschaden schwächt die Gesamtstabilität.", "Vorsicht: Bruchgefahr erhöht.")
+        "Material-Ermüdung": ("Gefügeschädigung durch kumulierte Lastzyklen.", "Präventiver Werkzeugwechsel empfohlen."),
+        "Überlastung": ("Mechanische Torsionsspannung überschreitet Elastizitätsgrenze.", "Vorschubrate f drastisch reduzieren."),
+        "Gefüge-Überhitzung": ("Thermische Erweichung der Schneidkante (Anlasseffekt).", "Schnittgeschwindigkeit vc senken oder Kühlung prüfen."),
+        "Resonanz-Instabilität": ("Hochfrequente Schwingungsamplituden schädigen Hartmetallgefüge.", "Drehzahlbereich anpassen (Resonanzvermeidung)."),
+        "Kühlungs-Defizit": ("Tribologisches Versagen durch Schmierfilmabriss.", "KSS-Druck und Düsenausrichtung kontrollieren."),
+        "Struktur-Vorschaden": ("Lokale Instabilität durch detektierte Mikrorisse.", "Achtung: Spontaner Gewaltbruch droht!")
     }
-    return mapping.get(top_reason, ("Prozess stabil.", "Keine Aktion nötig."))
+    return mapping.get(top_reason, ("Prozessparameter innerhalb der Toleranz.", "Keine Korrektur erforderlich."))
 
 def calculate_metrics(alter, last, thermik, vibration, kss_ausfall, integritaet):
     w = [1.2, 2.4, 3.8, 3.0, 4.5, 0.10]
-    scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kss_ausfall * w[4], (100 - integritaet) * w[5]]
-    z = sum(scores)
+    raw_scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kss_ausfall * w[4], (100 - integritaet) * w[5]]
+    z = sum(raw_scores)
     risk = 1 / (1 + np.exp(-(z - 9.5)))
     labels = ["Material-Ermüdung", "Überlastung", "Gefüge-Überhitzung", "Resonanz-Instabilität", "Kühlungs-Defizit", "Struktur-Vorschaden"]
-    evidenz = sorted(zip(labels, scores), key=lambda x: x[1], reverse=True)
+    
+    # Normalisierung der Scores für die grafische XAI-Anzeige (0-100%)
+    total = sum(raw_scores) if sum(raw_scores) > 0 else 1
+    norm_scores = [(s / total) * 100 for s in raw_scores]
+    evidenz = sorted(zip(labels, norm_scores), key=lambda x: x[1], reverse=True)
+    
     rul = int(max(0, (integritaet - 10) / max(0.01, (risk * 0.45))) * 5.5) if risk < 0.98 else 0
     return np.clip(risk, 0.001, 0.999), evidenz, rul
 
@@ -98,20 +106,20 @@ if s['active'] and not s['broken']:
     s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (s['vibration']/20)*0.05) * zyklus_sprung
     if s['integritaet'] <= 0: s['broken'], s['active'], s['integritaet'] = True, False, 0
     exp, act = get_explanation(evidenz_list[0][0])
-    s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'exp': exp, 'act': act})
+    s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'exp': exp, 'act': act, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
 
 # --- 6. UI ---
 if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH</div>', unsafe_allow_html=True)
 
-# Kennzahlen Header (Inklusive Bohrzyklen)
+# Kennzahlen Header
 m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
-m0.markdown(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><span class="val-main" style="color:#ffffff">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
+m0.markdown(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
 m1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
 m2.markdown(f'<div class="glass-card"><span class="val-title">Risiko</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
 m3.markdown(f'<div class="glass-card"><span class="val-title">Wartung in</span><br><span class="val-main" style="color:#58a6ff">{s["rul"]} Z.</span></div>', unsafe_allow_html=True)
 m4.markdown(f'<div class="glass-card"><span class="val-title">Thermik</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
-m5.markdown(f'<div class="glass-card"><span class="val-title">Vibration (mm/s)</span><br><span class="val-main" style="color:#bc8cff">{max(0,s["vibration"]):.1f}</span></div>', unsafe_allow_html=True)
+m5.markdown(f'<div class="glass-card"><span class="val-title">Vibration</span><br><span class="val-main" style="color:#bc8cff">{max(0,s["vibration"]):.1f}</span></div>', unsafe_allow_html=True)
 m6.markdown(f'<div class="glass-card"><span class="val-title">Last</span><br><span class="val-main">{s["drehmoment"]:.1f}Nm</span></div>', unsafe_allow_html=True)
 
 tab1, tab2 = st.tabs(["📊 LIVE-ANALYSE", "🧪 SZENARIO-LABOR (WAS-WÄRE-WENN)"])
@@ -129,9 +137,29 @@ with tab1:
             fig.update_layout(height=650, template="plotly_dark", showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
     with col_r:
-        st.markdown("### 👨‍🏫 KI-Zustandsbericht")
-        for l in s['logs'][:6]:
-            st.markdown(f'<div class="xai-card"><b style="color:#e3b341;">{l["zeit"]} | Risiko {l["risk"]:.1%}</b><br><div class="reason-text">"{l["exp"]}"</div><div class="action-text">👉 {l["act"]}</div></div>', unsafe_allow_html=True)
+        st.markdown("### 🧠 Deep XAI: Kausale Feature-Analyse")
+        for l in s['logs'][:5]:
+            # Generiere Feature-Balken für den Log-Eintrag
+            feature_html = ""
+            for label, score in l['evidenz'][:4]: # Zeige die Top 4 Einflussfaktoren
+                feature_html += f"""
+                <div class="xai-feature-row">
+                    <span>{label}</span><span>{score:.1f}% Einflusspriorität</span>
+                </div>
+                <div class="xai-bar-bg"><div class="xai-bar-fill" style="width: {score}%;"></div></div>
+                """
+            
+            st.markdown(f"""
+            <div class="xai-card">
+                <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:8px;">
+                    <b style="color:#e3b341;">LOG {l['zeit']}</b>
+                    <b style="color:#f85149;">RISIKO-LEVEL: {l['risk']:.1%}</b>
+                </div>
+                {feature_html}
+                <div class="reason-text">Analyse: "{l['exp']}"</div>
+                <div class="action-text">Maßnahme: {l['act']}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
 with tab2:
     st.markdown("### 🧪 Simulation kritischer Betriebszustände")
@@ -146,8 +174,6 @@ with tab2:
         sim_kss = st.toggle("KSS-Ausfall simulieren")
     with sc3:
         r_sim, evidenz_sim, rul_sim = calculate_metrics(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 1.0 if sim_kss else 0.0, sim_integ)
-        
-        # Radar-Chart für grafisches Labor-Upgrade
         fig_radar = go.Figure(data=go.Scatterpolar(
             r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*3, (100 if sim_kss else 0)],
             theta=['Alter','Last','Hitze','Vibration','KSS-Fehler'],
@@ -155,7 +181,6 @@ with tab2:
         ))
         fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 100])), showlegend=False, height=300, 
                                 template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=30, b=30))
-        
         st.plotly_chart(fig_radar, use_container_width=True)
         st.markdown(f'<div class="glass-card" style="text-align:center; border-color:#58a6ff"><b>PROGNOSE:</b><br><h1 style="color:#58a6ff">{rul_sim} Zyklen</h1><small>Statistisches Risiko: {r_sim:.1%}</small></div>', unsafe_allow_html=True)
 
