@@ -15,7 +15,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI - Bohrmaschinen Digital Twin v2.5", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI - Bohrsystem Digital Twin v2.5", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -38,7 +38,6 @@ st.markdown("""
     .val-main { font-family: 'Inter', sans-serif; font-size: 2.8rem; font-weight: 800; margin: 5px 0; }
     .blue-glow { color: #58a6ff; text-shadow: 0 0 15px rgba(88, 166, 255, 0.5); }
     .red-glow { color: #f85149; text-shadow: 0 0 15px rgba(248, 81, 73, 0.5); }
-    .green-glow { color: #3fb950; text-shadow: 0 0 15px rgba(63, 185, 80, 0.5); }
     .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; height: 350px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; }
     </style>
     """, unsafe_allow_html=True)
@@ -69,6 +68,14 @@ def get_engine():
     model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state)
     return VariableElimination(model)
 
+# Hilfsfunktion für die Kategorisierung (verhindert den NameError)
+def categorize_states(cycle, wear, temp, md, mat_crit, cooling_active, sens_load):
+    age_cat = 0 if cycle < 250 else (1 if cycle < 650 else 2)
+    load_cat = 1 if md > ((12.0 * 2.2) / sens_load) else 0 # d=12 als Referenz für Trigger
+    therm_cat = 1 if temp > mat_crit else 0
+    cool_cat = 0 if cooling_active else 1
+    return age_cat, load_cat, therm_cat, cool_cat
+
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False,
@@ -94,13 +101,12 @@ with st.sidebar:
     sim_speed = st.select_slider("Sim-Speed (Verzögerung ms)", options=[500, 200, 100, 50, 10, 0], value=50)
     sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
 
-# --- 5. LOGIK ---
+# --- 5. LOGIK (Simulation) ---
 engine = get_engine()
+s = st.session_state.twin
 
-if st.session_state.twin['active'] and not st.session_state.twin['broken']:
-    s = st.session_state.twin
+if s['active'] and not s['broken']:
     s['cycle'] += 1
-
     # Physik
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
@@ -108,17 +114,12 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.2 + s['seed'].normal(0, 0.4)
 
-    # Inferenz
-    age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
-    load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
-    therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
-    cool_cat = 0 if cooling else 1
-
-    s['risk'] = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
+    # Inferenz über Hilfsfunktion
+    a_c, l_c, t_c, c_c = categorize_states(s['cycle'], s['wear'], s['t_current'], mc_raw, mat['temp_crit'], cooling, sens_load)
+    s['risk'] = engine.query(['State'], evidence={'Age': a_c, 'Load': l_c, 'Therm': t_c, 'Cool': c_c}).values[2]
 
     if s['risk'] > 0.98 or s['wear'] > 100: 
-        s['broken'] = True
-        s['active'] = False
+        s['broken'] = True; s['active'] = False
 
     zeit = time.strftime("%H:%M:%S")
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'mc': mc_raw})
@@ -128,68 +129,63 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
 st.title("KI - BOHRSYSTEM | Digitaler Zwilling v2.5")
 col_metrics, col_main, col_logs = st.columns([1, 2, 1])
 
+# Aktuelle Kategorien für What-If (auch im Standby berechnen)
+cur_mc = (mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2) * d) / 2000
+age_cat_now, _, _, _ = categorize_states(s['cycle'], s['wear'], s['t_current'], cur_mc, mat['temp_crit'], cooling, sens_load)
+
 with col_metrics:
-    st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{st.session_state.twin["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{s["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{s["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
     
-    # NEU: WHAT-IF SANDBOX
+    # WHAT-IF SANDBOX
     st.markdown('<div class="sandbox-card">', unsafe_allow_html=True)
     st.subheader("🧪 What-If Analyse")
-    st.caption("Wie würde sich das Risiko ändern, wenn wir...")
-    hypo_vc = st.slider("Hypoth. vc", 20, 500, vc, key="h_vc")
-    hypo_cool = st.toggle("Hypoth. Kühlung", value=cooling, key="h_cool")
+    hypo_vc = st.slider("Hypoth. vc", 20, 500, vc)
+    hypo_cool = st.toggle("Hypoth. Kühlung", value=cooling)
     
-    # Hypothesen-Berechnung
+    # Hypothesen-Logik
     h_fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     h_mc = (h_fc * d) / 2000
-    h_t = 22 + (st.session_state.twin['wear'] * 1.5) + (hypo_vc * 0.2) + (0 if hypo_cool else 250)
+    h_t = 22 + (s['wear'] * 1.5) + (hypo_vc * 0.2) + (0 if hypo_cool else 250)
     
-    h_load_cat = 1 if h_mc > ((d * 2.2) / sens_load) else 0
-    h_therm_cat = 1 if h_t > mat['temp_crit'] else 0
-    h_cool_cat = 0 if hypo_cool else 1
+    _, h_l, h_t_c, h_c_c = categorize_states(s['cycle'], s['wear'], h_t, h_mc, mat['temp_crit'], hypo_cool, sens_load)
     
-    hypo_risk = engine.query(['State'], evidence={'Age': age_cat, 'Load': h_load_cat, 'Therm': h_therm_cat, 'Cool': h_cool_cat}).values[2]
-    diff = hypo_risk - st.session_state.twin['risk']
-    diff_color = "red" if diff > 0 else "#3fb950"
+    hypo_risk = engine.query(['State'], evidence={'Age': age_cat_now, 'Load': h_l, 'Therm': h_t_c, 'Cool': h_c_c}).values[2]
+    diff = hypo_risk - s['risk']
     
     st.metric("Hypothetisches Risiko", f"{hypo_risk:.1%}", delta=f"{diff:.1%}", delta_color="inverse" if diff < 0 else "normal")
-    if diff < -0.1:
-        st.success("💡 Maßnahme empfohlen!")
+    if diff < -0.1: st.success("💡 Optimierung erkannt!")
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_main:
+    # TTF Berechnung
     ttf = "---"
-    if len(st.session_state.twin['history']) > 3:
-        df_calc = pd.DataFrame(st.session_state.twin['history'][-15:])
+    if len(s['history']) > 3:
+        df_calc = pd.DataFrame(s['history'][-15:])
         z = np.polyfit(df_calc['c'], df_calc['w'], 1)
-        ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.000001, z[0])))
+        ttf = max(0, int((100 - s['wear']) / max(0.000001, z[0])))
     st.markdown(f'<div class="predictive-card"><span class="val-title">🔮 TTF (Zyklen bis Ausfall)</span><br><div class="ttf-val">{ttf}</div></div>', unsafe_allow_html=True)
 
-    if len(st.session_state.twin['history']) > 0:
-        df_p = pd.DataFrame(st.session_state.twin['history'])
+    if len(s['history']) > 0:
+        df_p = pd.DataFrame(s['history'])
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
         fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r'] * 100, fill='tozeroy', name="Echtzeit-Risiko %", line=dict(color='#f85149')), row=1, col=1)
-        # NEU: Hypothesen-Linie im Chart
-        fig.add_hline(y=hypo_risk*100, line_dash="dash", line_color="#3fb950", annotation_text="What-If Level", row=1, col=1)
+        fig.add_hline(y=hypo_risk*100, line_dash="dash", line_color="#3fb950", annotation_text="What-If", row=1, col=1)
         fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['mc'], name="Md [Nm]", line=dict(color='#58a6ff')), row=2, col=1)
         fig.update_layout(height=400, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=20, b=0))
         st.plotly_chart(fig, use_container_width=True)
 
 with col_logs:
     st.markdown('<p class="val-title">KI-Analyse Log</p>', unsafe_allow_html=True)
-    log_txt = "".join([f"<div style='margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:4px; color:#3fb950; font-family:monospace;'>{l}</div>" for l in st.session_state.twin['logs'][:30]])
+    log_txt = "".join([f"<div style='margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:4px; color:#3fb950; font-family:monospace;'>{l}</div>" for l in s['logs'][:30]])
     st.markdown(f'<div class="terminal">{log_txt}</div>', unsafe_allow_html=True)
 
 st.divider()
-c1, c2, c3 = st.columns(3)
-if c1.button("▶ START / STOPP", use_container_width=True): st.session_state.twin['active'] = not st.session_state.twin['active']
+c1, c2 = st.columns(2)
+if c1.button("▶ START / STOPP", use_container_width=True): s['active'] = not s['active']
 if c2.button("🔄 RESET", use_container_width=True):
     st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'seed': np.random.RandomState(42), 'risk': 0.0}
     st.rerun()
-if c3.button("📥 DATEN EXPORT", use_container_width=True):
-    if st.session_state.twin['history']:
-        pd.DataFrame(st.session_state.twin['history']).to_csv("bohrmaschine_daten.csv")
-        st.success("Exportiert als bohrmaschine_daten.csv")
 
-if st.session_state.twin['active']:
+if s['active']:
     time.sleep(sim_speed / 1000); st.rerun()
