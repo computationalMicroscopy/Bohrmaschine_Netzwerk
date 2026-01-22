@@ -69,7 +69,7 @@ MATERIALIEN = {
     "Titan Grade 5": {"kc1.1": 2800, "mc": 0.24, "rate": 1.2, "t_crit": 750}
 }
 
-# --- 4. SIDEBAR (SENSOREN WIEDER DA) ---
+# --- 4. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Konfiguration")
     mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
@@ -104,8 +104,9 @@ if s['active'] and not s['broken']:
 # --- 6. UI ---
 if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH</div>', unsafe_allow_html=True)
 
-# Kennzahlen
-m1, m2, m3, m4, m5, m6 = st.columns(6)
+# Kennzahlen Header (Inklusive Bohrzyklen)
+m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
+m0.markdown(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><span class="val-main" style="color:#ffffff">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
 m1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
 m2.markdown(f'<div class="glass-card"><span class="val-title">Risiko</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
 m3.markdown(f'<div class="glass-card"><span class="val-title">Wartung in</span><br><span class="val-main" style="color:#58a6ff">{s["rul"]} Z.</span></div>', unsafe_allow_html=True)
@@ -133,17 +134,30 @@ with tab1:
             st.markdown(f'<div class="xai-card"><b style="color:#e3b341;">{l["zeit"]} | Risiko {l["risk"]:.1%}</b><br><div class="reason-text">"{l["exp"]}"</div><div class="action-text">👉 {l["act"]}</div></div>', unsafe_allow_html=True)
 
 with tab2:
-    st.header("🧪 Experimentelles Labor")
-    sc1, sc2, sc3 = st.columns([1, 1, 1.5])
+    st.markdown("### 🧪 Simulation kritischer Betriebszustände")
+    sc1, sc2, sc3 = st.columns([1, 1, 2])
     with sc1:
-        sim_alter = st.slider("Alter [Zyklen]", 0, 2000, 500)
-        sim_last = st.slider("Last [Nm]", 0, 200, 40)
+        sim_alter = st.slider("Simuliertes Alter [Zyklen]", 0, 3000, 500)
+        sim_last = st.slider("Simulierte Last [Nm]", 0, 300, 40)
+        sim_vibr = st.slider("Simulierte Vibration", 0.0, 30.0, 2.0)
     with sc2:
-        sim_temp = st.slider("Hitze [°C]", 20, 1000, 150)
-        sim_vibr = st.slider("Vibration", 0.0, 20.0, 2.0)
+        sim_temp = st.slider("Simulierte Hitze [°C]", 20, 1200, 150)
+        sim_integ = st.slider("Rest-Integrität [%]", 0, 100, 100)
+        sim_kss = st.toggle("KSS-Ausfall simulieren")
     with sc3:
-        r_sim, evidenz_sim, rul_sim = calculate_metrics(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 0.0, 100)
-        st.markdown(f'<div class="glass-card" style="text-align:center;">Prognostizierter Wartungswert<h1>{rul_sim} Zyklen</h1><small>Bruchrisiko: {r_sim:.1%}</small></div>', unsafe_allow_html=True)
+        r_sim, evidenz_sim, rul_sim = calculate_metrics(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 1.0 if sim_kss else 0.0, sim_integ)
+        
+        # Radar-Chart für grafisches Labor-Upgrade
+        fig_radar = go.Figure(data=go.Scatterpolar(
+            r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*3, (100 if sim_kss else 0)],
+            theta=['Alter','Last','Hitze','Vibration','KSS-Fehler'],
+            fill='toself', line=dict(color='#e3b341')
+        ))
+        fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 100])), showlegend=False, height=300, 
+                                template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=30, b=30))
+        
+        st.plotly_chart(fig_radar, use_container_width=True)
+        st.markdown(f'<div class="glass-card" style="text-align:center; border-color:#58a6ff"><b>PROGNOSE:</b><br><h1 style="color:#58a6ff">{rul_sim} Zyklen</h1><small>Statistisches Risiko: {r_sim:.1%}</small></div>', unsafe_allow_html=True)
 
 st.divider()
 c1, c2 = st.columns(2)
