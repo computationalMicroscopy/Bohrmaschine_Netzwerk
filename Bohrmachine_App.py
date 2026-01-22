@@ -76,7 +76,7 @@ MATERIALIEN = {
     "Titan-Legierung": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750}
 }
 
-# --- 4. SIDEBAR (Wiederhergestellt & Erweitert) ---
+# --- 4. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Prozess-Parameter")
     mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
@@ -98,21 +98,14 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
 
-    # Physikalische Berechnung
+    # Physik
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
-    
-    # Verschleißentwicklung
     s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300)) * cycle_step
-    
-    # Thermik
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.2 + s['seed'].normal(0, 0.4)
     
-    # Vibration (nur für Visualisierung und Logik-Trigger)
-    amp = (((0.005 + (s['wear'] * 0.002)) * 10) + s['seed'].normal(0, 0.05)) * sens_vib
-
-    # KI-Kategorisierung
+    # KI Inferenz
     age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
     load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
     therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
@@ -121,29 +114,32 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     engine = get_engine()
     s['risk'] = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
 
-    # --- VERBESSERTE BRUCHLOGIK (INTEGRITÄTS-AKKUMULATOR) ---
-    # Risiko unter 50% führt fast nie zum Bruch. Über 50% sinkt die Integrität.
-    if s['risk'] > 0.50:
-        damage = (s['risk'] ** 2) * (cycle_step / 2) # Exponentielles Schadensmodell
+    # --- GEFIXTE BRUCHLOGIK ---
+    # 1. Schadensakkumulation: Nur wenn Risiko > 60%
+    if s['risk'] > 0.60:
+        # Schaden ist quadratisch zum Risiko über der 60%-Schwelle
+        damage = ((s['risk'] - 0.60) * 2) ** 2 * cycle_step
         s['integrity'] -= damage
     
-    # Zufälliger "Schock-Bruch" nur bei extrem hohem Risiko
-    shock_event = s['seed'].rand() < (s['risk'] * 0.02) if s['risk'] > 0.85 else False
-
-    if s['integrity'] <= 0 or s['wear'] > 120 or shock_event:
+    # 2. Bruch-Bedingung: Nur Integrität <= 0 ODER extremster Verschleiß
+    if s['integrity'] <= 0:
         s['broken'] = True
         s['active'] = False
-        s['logs'].insert(0, f"💥 KRITISCHER BRUCH BEI ZYKLUS {s['cycle']}!")
+        s['logs'].insert(0, f"💥 STRUKTURVERSAGEN BEI ZYKLUS {s['cycle']}!")
+    elif s['wear'] > 150: # Extremes Limit
+        s['broken'] = True
+        s['active'] = False
+        s['logs'].insert(0, f"🔥 THERMISCHES SCHMELZEN BEI ZYKLUS {s['cycle']}!")
 
     zeit = time.strftime("%H:%M:%S")
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'i': s['integrity']})
-    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} | Risiko: {s['risk']:.1%} | Struktur: {max(0, s['integrity']):.1f}%")
+    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} | Risiko: {s['risk']:.1%} | Integrität: {max(0, s['integrity']):.1f}%")
 
 # --- 6. UI ---
-st.title("KI - Digital Twin: Bohrer-Simulation")
+st.title("KI - Digital Twin: Bohrer-Überwachung")
 
 if st.session_state.twin['broken']:
-    st.error("🚨 WERKZEUGGEGENSTAND ZERSTÖRT! Simulation angehalten.", icon="💥")
+    st.error("🚨 MASCHINE GESTOPPT: WERKZEUG BRUCH", icon="💥")
 
 col_metrics, col_main, col_logs = st.columns([1, 2, 1])
 
@@ -153,36 +149,36 @@ with col_metrics:
     st.markdown(f'<div class="glass-card"><span class="val-title">Struktur-Integrität</span><br><span class="val-main" style="color:#3fb950">{max(0, st.session_state.twin["integrity"]):.1f} %</span></div>', unsafe_allow_html=True)
 
 with col_main:
-    # Warn-Logik für UI
-    is_critical = st.session_state.twin['risk'] > 0.75 or st.session_state.twin['integrity'] < 30
+    # Warnung erst ab echtem Risiko
+    is_critical = st.session_state.twin['risk'] > 0.80 or st.session_state.twin['integrity'] < 25
     card_style = "warning-card" if is_critical else "predictive-card"
-    card_title = "⚠️ ACHTUNG: KRITISCHER BEREICH" if is_critical else "🔮 Predictive Maintenance"
-
+    
     ttf = "---"
     if len(st.session_state.twin['history']) > 5:
         df_h = pd.DataFrame(st.session_state.twin['history'])
         z = np.polyfit(df_h['c'], df_h['w'], 1)
         ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.00001, z[0])))
 
-    st.markdown(f'<div class="{card_style}"><span class="val-title">{card_title}</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis empf. Wartung</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{card_style}"><span class="val-title">Zustands-Analyse</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis Wartungsempfehlung</span></div>', unsafe_allow_html=True)
 
     if len(st.session_state.twin['history']) > 0:
         df_p = pd.DataFrame(st.session_state.twin['history'])
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
-        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r']*100, name="Risiko %", line=dict(color='#f85149', width=3)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['r']*100, name="Risiko %", line=dict(color='#f85149', width=2)), row=1, col=1)
         fig.add_trace(go.Scatter(x=df_p['c'], y=df_p['i'], name="Integrität %", fill='tozeroy', line=dict(color='#3fb950')), row=2, col=1)
         fig.update_layout(height=400, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, use_container_width=True)
 
 with col_logs:
-    st.markdown('<p class="val-title">Live-Inferenz & Sensorik</p>', unsafe_allow_html=True)
-    log_content = "".join([f"<div style='color:{'#f85149' if '💥' in l else '#3fb950'}; font-family:monospace; font-size:0.75rem; border-bottom:1px solid #333;'>{l}</div>" for l in st.session_state.twin['logs'][:30]])
+    st.markdown('<p class="val-title">System-Monitor</p>', unsafe_allow_html=True)
+    log_content = "".join([f"<div style='color:{'#f85149' if '💥' in l or '🔥' in l else '#3fb950'}; font-family:monospace; font-size:0.75rem; border-bottom:1px solid #333;'>{l}</div>" for l in st.session_state.twin['logs'][:30]])
     st.markdown(f'<div class="terminal">{log_content}</div>', unsafe_allow_html=True)
 
 st.divider()
 c1, c2 = st.columns(2)
 with c1:
-    st.button("▶ START / STOPP", use_container_width=True, on_click=lambda: st.session_state.twin.update({'active': not st.session_state.twin['active']}))
+    if st.button("▶ START / STOPP", use_container_width=True, disabled=st.session_state.twin['broken']):
+        st.session_state.twin['active'] = not st.session_state.twin['active']
 with c2:
     if st.button("🔄 VOLLSTÄNDIGER RESET", use_container_width=True):
         st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
