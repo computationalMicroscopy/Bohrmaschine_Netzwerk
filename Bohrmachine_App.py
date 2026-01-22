@@ -49,9 +49,9 @@ def get_explanation(top_reason):
     mapping = {
         "Material-Ermüdung": ("Strukturelle Gefügeschädigung durch kumulierte Lastzyklen (Wöhler-Kurve Grenzbereich).", "Präventiver Werkzeugwechsel zur Vermeidung von Maßhaltigkeitsfehlern."),
         "Überlastung": ("Mechanische Torsionsspannung überschreitet kritische Elastizitätsgrenze des Hartmetalls.", "Vorschubrate f drastisch reduzieren oder Spanbruchgeometrie prüfen."),
-        "Gefüge-Überhitzung": ("Thermische Diffusionsvorgänge führen zur Erweichung der Schneidkante (Anlasseffekt).", "Schnittgeschwindigkeit vc senken oder KSS-Druck erhöhen."),
+        "Gefüge-Überhitzung": ("Thermische Diffusionsvorgänge führen zur Erweichung der Schneidkante (Anlasseffekt).", "Schnittgeschwindigkeit vc senken oder Kühlmittel-Druck erhöhen."),
         "Resonanz-Instabilität": ("Harmonische Schwingungsamplituden induzieren kinetische Zerrüttung im Gefüge.", "Drehzahlbereich zur Resonanzvermeidung verschieben."),
-        "Kühlungs-Defizit": ("Tribologisches Systemversagen durch Schmierfilmabriss in der Kontaktzone.", "KSS-Volumenstrom und Düsenausrichtung an der Spannut kontrollieren."),
+        "Kühlungs-Defizit": ("Tribologisches Systemversagen durch Schmierfilmabriss in der Kontaktzone.", "Kühlmittel-Volumenstrom und Düsenausrichtung an der Spannut kontrollieren."),
         "Struktur-Vorschaden": ("Lokale Instabilität durch detektierte Mikrorisse im Bohrerkern.", "Sofortiger Stopp: Akute Gefahr des spröden Gewaltbruchs!")
     }
     return mapping.get(top_reason, ("Prozessparameter innerhalb der statistischen Toleranz.", "Keine Korrektur erforderlich."))
@@ -89,7 +89,7 @@ with st.sidebar:
     vc = st.slider("vc [m/min]", 20, 600, 180)
     f = st.slider("f [mm/U]", 0.01, 1.2, 0.2)
     d = st.number_input("Ø [mm]", 1.0, 100.0, 12.0)
-    kss = st.toggle("KSS aktiv", value=True)
+    kss = st.toggle("Kühlung aktiv", value=True)
     st.divider()
     st.header("📡 Sensoren")
     sens_vibr = st.slider("Vibrations-Gain", 0.1, 5.0, 1.0)
@@ -165,7 +165,7 @@ with tab2:
     with sc2:
         sim_temp = st.slider("Sim. Hitze [°C]", 20, 1200, 150)
         sim_integ = st.slider("Integrität [%]", 0, 100, 100)
-        sim_kss = st.toggle("Sim. KSS-Ausfall")
+        sim_kss = st.toggle("Sim. Kühlung-Ausfall")
     with sc3:
         r_sim, evidenz_sim, rul_sim = calculate_metrics(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 1.0 if sim_kss else 0.0, sim_integ)
         fig_radar = go.Figure(data=go.Scatterpolar(r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*3, (100 if sim_kss else 0)], theta=['Alter','Last','Hitze','Vibration','KSS'], fill='toself', line=dict(color='#e3b341')))
