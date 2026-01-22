@@ -41,14 +41,15 @@ st.markdown("""
 
 st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow_html=True)
 
-# --- 2. KI-LOGIK (FEINJUSTIERT) ---
+# --- 2. KI-LOGIK (MODIFIZIERTE LABELS) ---
 def calculate_metrics(alter, last, thermik, vibration, kss_ausfall, integritaet):
     w = [1.2, 2.4, 3.8, 3.0, 4.5, 0.10]
     scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kss_ausfall * w[4], (100 - integritaet) * w[5]]
     z = sum(scores)
     risk = 1 / (1 + np.exp(-(z - 9.5)))
     
-    labels = ["Alterung (Zyklen)", "Mechanische Last (Drehmoment)", "Prozess-Thermik (Hitze)", "Vibrations-Trauma (Instabilität)", "KSS-Defizit (Kühlung)", "Vorschaden (Struktur)"]
+    # Präzisere Labels für die Evidenz-Tags
+    labels = ["Material-Ermüdung", "Überlastung", "Gefüge-Überhitzung", "Resonanz-Instabilität", "Kühlungs-Defizit", "Struktur-Vorschaden"]
     evidenz = sorted(zip(labels, scores), key=lambda x: x[1], reverse=True)
     
     if risk > 0.98 or integritaet <= 0: zyklen_bis_wartung = 0
@@ -149,26 +150,26 @@ with tab1:
             st.plotly_chart(fig, use_container_width=True)
 
     with col_xai:
-        st.markdown("### 🔍 XAI: Kausale Zustands-Erklärung")
+        st.markdown("### 🔍 KI-Entscheidungsbegründung")
         x_html = ""
         for l in s['logs'][:10]:
             badges = "".join([f'<span class="evidenz-tag">{e[0]}</span>' for e in l['evidenz']])
             x_html += f"""
             <div style="border-left: 5px solid #e3b341; background: rgba(30, 35, 45, 0.8); padding: 15px; margin-bottom: 12px; border-radius: 8px;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                    <b style="color:#58a6ff; font-size:13px;">ZEITSTAMP: {l['zeit']}</b> 
-                    <b style="color:#e3b341; font-size:13px;">Risiko: {l['risk']:.1%}</b>
+                    <b style="color:#58a6ff; font-size:13px;">ANALYSE: {l['zeit']}</b> 
+                    <b style="color:#e3b341; font-size:13px;">RISIKO: {l['risk']:.1%}</b>
                 </div>
                 <div style="margin-bottom:10px;">{badges}</div>
                 <div style="border-top: 1px solid #30363d; padding-top:8px;">
-                    <p style="font-size:11px; color:#8b949e; margin-bottom:5px; font-weight:bold;">PHYSIKALISCHE DEGRADATION (DETAIL):</p>
-                    <div style="display: grid; grid-template-columns: 1fr 100px; font-size:11px;">
-                        <span class="xai-label">Dauerschwing-Ermüdung</span><span class="xai-value">-{l['l_fatigue']:.4f}%</span>
-                        <span class="xai-label">Mechanische Lastspitzen</span><span class="xai-value">-{l['l_load']:.4f}%</span>
-                        <span class="xai-label">Thermische Gefügeschwächung</span><span class="xai-value">-{l['l_thermal']:.4f}%</span>
-                        <span class="xai-label">Kinetische Zerrüttung</span><span class="xai-value">-{l['l_vibr']:.4f}%</span>
-                        <hr style="grid-column: span 2; border: 0.5px solid #444;">
-                        <span style="font-weight:bold; color:#e1e4e8;">Zyklus-Substanzverlust:</span>
+                    <p style="font-size:11px; color:#8b949e; margin-bottom:8px; font-weight:bold;">KAUSALE DEGRADATIONS-FAKTOREN:</p>
+                    <div style="display: grid; grid-template-columns: 1fr 100px; font-size:11px; row-gap: 4px;">
+                        <span class="xai-label">Mikrorisse durch Lastwechsel (Alter)</span><span class="xai-value">-{l['l_fatigue']:.4f}%</span>
+                        <span class="xai-label">Mechanische Spannungsspitzen (Kraft)</span><span class="xai-value">-{l['l_load']:.4f}%</span>
+                        <span class="xai-label">Thermische Enthärtung (Hitze)</span><span class="xai-value">-{l['l_thermal']:.4f}%</span>
+                        <span class="xai-label">Kinetische Zerrüttung (Vibration)</span><span class="xai-value">-{l['l_vibr']:.4f}%</span>
+                        <hr style="grid-column: span 2; border: 0.5px solid #444; margin: 4px 0;">
+                        <span style="font-weight:bold; color:#e1e4e8;">Totaler Substanzverlust:</span>
                         <span style="font-weight:bold; color:#f85149; text-align:right;">-{(l['l_fatigue']+l['l_load']+l['l_thermal']+l['l_vibr']):.4f}%</span>
                     </div>
                 </div>
