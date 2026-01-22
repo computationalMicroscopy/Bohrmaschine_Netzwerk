@@ -41,12 +41,13 @@ st.markdown("""
     .val-main { font-family: 'Inter', sans-serif; font-size: 2.5rem; font-weight: 800; margin: 5px 0; }
     .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; }
     .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; height: 480px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; line-height: 1.6; }
+    .xai-entry { margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 8px; }
     .xai-tag { color: #e3b341; font-weight: bold; font-size: 0.7rem; }
     .xai-val { color: #58a6ff; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-ENGINE (Original Wahrscheinlichkeiten) ---
+# --- 2. KI-ENGINE ---
 @st.cache_resource
 def get_engine():
     model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
@@ -95,17 +96,16 @@ with st.sidebar:
     cooling = st.toggle("Kühlschmierung aktiv", value=True)
     st.divider()
     st.header("📡 Sensor-Konfiguration")
-    sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
-    sens_vib = st.slider("Vibrations-Empfindlichkeit", 0.1, 5.0, 1.0)
     cycle_step = st.number_input("Schrittweite", 1, 50, 1)
     sim_speed = st.select_slider("Verzögerung (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
+    sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
 
 # --- 5. LOGIK ---
 if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
     
-    # Physik
+    # Physik & Verschleiß
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
     s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300)) * cycle_step
@@ -120,10 +120,9 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     engine = get_engine()
     s['risk'] = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
 
-    # Schadensmodell
+    # Integritätsverlust (Ermüdung + Risiko + Exponentielle Thermik)
     fatigue = (s['wear'] / 100) * 0.05 * cycle_step
     acute_damage = (s['risk'] ** 3) * 0.5 * cycle_step if s['risk'] > 0.4 else 0
-    
     thermal_collapse = 0
     if s['t_current'] >= mat['temp_crit']:
         t_diff = s['t_current'] - mat['temp_crit']
@@ -135,29 +134,20 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
         s['active'] = False
         s['integrity'] = 0
 
-    # VOLLSTÄNDIGES XAI LOGGING
+    # Saubere Daten für das Logging (kein HTML hier!)
     zeit = time.strftime("%H:%M:%S")
-    age_lbl = ["NEU", "GEBRAUCHT", "ALT"][age_cat]
-    load_lbl = "HOCH" if load_cat else "NORMAL"
-    therm_lbl = "SCHMELZPUNKT!" if s['t_current'] >= mat['temp_crit'] else ("HEISS" if therm_cat else "NORMAL")
-    
-    log_entry = f"""
-    <div style='margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:8px;'>
-        <b style='color:#58a6ff;'>[{zeit}] ZYKLUS {s['cycle']}</b> | 
-        <b style='color:{"#f85149" if s['risk'] > 0.6 else "#3fb950"};'>STATUS: {"GEFAHR" if s['risk'] > 0.6 else "NOMINAL"}</b><br>
-        <span class='xai-tag'>INTEGRITÄT:</span> <span class='xai-val'>{s['integrity']:.2f}%</span> | 
-        <span class='xai-tag'>RISIKO:</span> <span class='xai-val'>{s['risk']:.1%}</span><br>
-        <span class='xai-tag'>KI-EVIDENZ:</span> [Alter: {age_lbl} | Last: {load_lbl} | Thermik: {therm_lbl} | Kühlung: {'AKTIV' if cooling else 'AUS'}]<br>
-        <span class='xai-tag'>PHYSIK:</span> Temp: {s['t_current']:.1f}°C | Drehmoment: {mc_raw:.1f}Nm | Verschleiß: {s['wear']:.1f}%<br>
-        <span class='xai-tag'>SCHADENS-INPUT:</span> Ermüdung: -{fatigue:.4f} | Last-Peak: -{acute_damage:.4f} | 
-        <b style='color:#f85149;'>Therm. Kollaps: -{thermal_collapse:.4f}</b>
-    </div>
-    """
-    s['logs'].insert(0, log_entry)
+    log_data = {
+        'zeit': zeit, 'zyk': s['cycle'], 'risk': s['risk'], 'integ': s['integrity'],
+        'age': ["NEU", "GEBR.", "ALT"][age_cat], 'load': "HOCH" if load_cat else "NORM",
+        'therm': "CRIT" if s['t_current'] >= mat['temp_crit'] else "OK",
+        'temp': s['t_current'], 'md': mc_raw, 'wear': s['wear'],
+        'f_loss': fatigue, 'a_loss': acute_damage, 't_loss': thermal_collapse
+    }
+    s['logs'].insert(0, log_data)
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'i': s['integrity']})
 
 # --- 6. UI ---
-st.title("KI - Digital Twin: Full XAI Drill Monitoring & Analysis")
+st.title("KI - Digital Twin: Full XAI Drill Monitoring")
 
 if st.session_state.twin['t_current'] >= mat['temp_crit'] and not st.session_state.twin['broken']:
     st.markdown(f'<div class="melt-warning">🔥 MATERIAL-KOLLAPS: TEMPERATUR ÜBER SCHMELZPUNKT ({mat["temp_crit"]}°C)!</div>', unsafe_allow_html=True)
@@ -194,8 +184,19 @@ with col_main:
 
 with col_logs:
     st.markdown('<p class="val-title">Echtzeit XAI-System Monitor</p>', unsafe_allow_html=True)
-    log_html = "".join(st.session_state.twin['logs'][:20])
-    st.markdown(f'<div class="terminal">{log_html}</div>', unsafe_allow_html=True)
+    # Rendering erfolgt jetzt SICHER hier
+    log_content = ""
+    for l in st.session_state.twin['logs'][:15]:
+        status_col = "#f85149" if l['risk'] > 0.6 else "#3fb950"
+        log_content += f"""
+        <div class="xai-entry">
+            <b style="color:#58a6ff;">[{l['zeit']}] ZYK {l['zyk']}</b> | <b style="color:{status_col};">RISIKO: {l['risk']:.1%}</b><br>
+            <span class="xai-tag">INTEGRITÄT:</span> {l['integ']:.2f}% | <span class="xai-tag">KI-EV:</span> {l['age']}/{l['load']}/{l['therm']}<br>
+            <span class="xai-tag">SENSOR:</span> {l['temp']:.1f}°C / {l['md']:.1f}Nm / {l['wear']:.1f}%<br>
+            <span class="xai-tag">LOSS:</span> F:{l['f_loss']:.3f} | L:{l['a_loss']:.3f} | <b style="color:#f85149;">T:{l['t_loss']:.3f}</b>
+        </div>
+        """
+    st.markdown(f'<div class="terminal">{log_content}</div>', unsafe_allow_html=True)
 
 st.divider()
 c1, c2 = st.columns(2)
