@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI -Labor Bohrtechnik", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI - Labor Bohrtechnik", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -201,7 +201,7 @@ with col_protokoll:
             </div>
 
             <div style="background: rgba(248, 81, 73, 0.05); padding: 8px; border-radius: 4px; border-left: 3px solid #f85149; margin-bottom: 8px;">
-                <b style="color:#f85149; font-size: 11px; text-transform: uppercase;">DETAILLIERTE URSACHENANALYSE DER MATERIALSADÄDIGUNG:</b><br>
+                <b style="color:#f85149; font-size: 11px; text-transform: uppercase;">DETAILLIERTE URSACHENANALYSE DER MATERIALSCHÄDIGUNG:</b><br>
                 <div style="margin-top:4px;">• <b>Stetiger Substanzverlust:</b> -{l['f_loss']:.4f}% <span style="color:#8b949e; font-size:11px;">(Verschleiß der Schneidkante)</span></div>
                 <div>• <b>Mechanische Schadenslast:</b> -{l['a_loss']:.4f}% <span style="color:#8b949e; font-size:11px;">(Überbeanspruchung des Werkzeugkörpers)</span></div>
                 <div>• <b>Thermische Gefügezerstörung:</b> <span style="color:#f85149;">-{l['t_loss']:.4f}%</span> <span style="color:#8b949e; font-size:11px;">(Hitzeinduzierter Härteverlust)</span></div>
