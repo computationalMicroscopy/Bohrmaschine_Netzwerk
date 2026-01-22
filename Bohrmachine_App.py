@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI - Digitaler Zwilling: Vollständiges Bohr-Monitoring", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI - Digitaler Zwilling: Schulungssystem Bohrtechnik", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -137,7 +137,7 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     log_data = {
         'zeit': zeit, 'zyk': s['cycle'], 'risk': s['risk'], 'integ': s['integrity'],
         'age': ["NEUWERTIG", "GEBRAUCHT", "ALT"][age_cat], 
-        'load': "ÜBERLAST", 'load_status': load_cat,
+        'load_status': load_cat,
         'therm': "KRITISCH" if s['t_current'] >= mat['temp_crit'] else "STABIL",
         'temp': s['t_current'], 'md': mc_raw, 'wear': s['wear'], 'vib': s['vib'],
         'f_loss': fatigue, 'a_loss': acute_damage, 't_loss': thermal_collapse
@@ -146,7 +146,7 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'i': s['integrity'], 'v': s['vib']})
 
 # --- 6. BENUTZEROBERFLÄCHE ---
-st.title("KI - Digitaler Zwilling: Vollständiges Bohr-Monitoring")
+st.title("KI - Digitaler Zwilling: Schulungssystem Bohrtechnik")
 
 if st.session_state.twin['t_current'] >= mat['temp_crit'] and not st.session_state.twin['broken']:
     st.markdown(f'<div class="melt-warning">🔥 MATERIAL-KOLLAPS: TEMPERATUR ÜBER SCHMELZPUNKT ({mat["temp_crit"]}°C)!</div>', unsafe_allow_html=True)
@@ -183,7 +183,7 @@ with col_haupt:
         st.plotly_chart(fig, use_container_width=True)
 
 with col_protokoll:
-    st.markdown('<p class="val-title">Echtzeit Erklärbare-KI Monitor (XAI)</p>', unsafe_allow_html=True)
+    st.markdown('<p class="val-title">Echtzeit Analyse-Monitor (XAI)</p>', unsafe_allow_html=True)
     
     html_eintraege = ""
     for l in st.session_state.twin['logs'][:15]:
@@ -192,23 +192,23 @@ with col_protokoll:
         <div style="margin-bottom: 25px; border-bottom: 2px solid #333; padding-bottom: 15px; font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #e1e4e8;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                 <b style="color:#58a6ff;">[{l['zeit']}] ZYKLUS: {l['zyk']}</b>
-                <b style="color:{status_farbe};">GESAMT-RISIKO: {l['risk']:.1%}</b>
+                <b style="color:{status_farbe};">KRITISCHES RISIKO: {l['risk']:.1%}</b>
             </div>
             
             <div style="background: rgba(255, 255, 255, 0.03); padding: 8px; border-radius: 4px; border-left: 3px solid #e3b341; margin-bottom: 8px;">
-                <b style="color:#e3b341; font-size: 11px; text-transform: uppercase;">KI-EVIDENZ (ENTSCHEIDUNGSGRUNDLAGE):</b><br>
+                <b style="color:#e3b341; font-size: 11px; text-transform: uppercase;">KI-ENTSCHEIDUNGSGRUNDLAGE (EVIDENZ):</b><br>
                 <b>Werkzeugalter:</b> {l['age']} | <b>Lastzustand:</b> {"HOCH" if l['load_status'] else "NORMAL"} | <b>Thermischer Status:</b> {l['therm']}
             </div>
 
             <div style="background: rgba(248, 81, 73, 0.05); padding: 8px; border-radius: 4px; border-left: 3px solid #f85149; margin-bottom: 8px;">
-                <b style="color:#f85149; font-size: 11px; text-transform: uppercase;">PHYSIKALISCHER SCHADENS-BREAKDOWN (ERKLÄRUNG):</b><br>
-                <div style="margin-top:4px;">• <b>Material-Ermüdung:</b> {l['f_loss']:.4f} <span style="color:#8b949e; font-size:11px;">(Verschleißbedingter Substanzverlust)</span></div>
-                <div>• <b>Akuter Last-Schaden:</b> {l['a_loss']:.4f} <span style="color:#8b949e; font-size:11px;">(Mechanische Überbeanspruchung)</span></div>
-                <div>• <b>Thermischer Kollaps:</b> <span style="color:#f85149;">{l['t_loss']:.4f}</span> <span style="color:#8b949e; font-size:11px;">(Gefügeverlust durch Hitze-Exzesse)</span></div>
+                <b style="color:#f85149; font-size: 11px; text-transform: uppercase;">DETAILLIERTE URSACHENANALYSE DER MATERIALSADÄDIGUNG:</b><br>
+                <div style="margin-top:4px;">• <b>Stetiger Substanzverlust:</b> -{l['f_loss']:.4f}% <span style="color:#8b949e; font-size:11px;">(Verschleiß der Schneidkante)</span></div>
+                <div>• <b>Mechanische Schadenslast:</b> -{l['a_loss']:.4f}% <span style="color:#8b949e; font-size:11px;">(Überbeanspruchung des Werkzeugkörpers)</span></div>
+                <div>• <b>Thermische Gefügezerstörung:</b> <span style="color:#f85149;">-{l['t_loss']:.4f}%</span> <span style="color:#8b949e; font-size:11px;">(Hitzeinduzierter Härteverlust)</span></div>
             </div>
 
             <div style="color: #8b949e; font-size: 12px; padding: 4px;">
-                <b>SENSORIK:</b> {l['temp']:.1f}°C | Vibration: {l['vib']:.2f} mm/s | Drehmoment: {l['md']:.1f} Nm
+                <b>AKTUELL GEMESSEN:</b> {l['temp']:.1f}°C | Vibration: {l['vib']:.2f} mm/s | Drehmoment: {l['md']:.1f} Nm
             </div>
         </div>
         """
