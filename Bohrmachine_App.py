@@ -146,7 +146,7 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'i': s['integrity'], 'v': s['vib']})
 
 # --- 6. BENUTZEROBERFLÄCHE ---
-st.title("KI - Digitaler Zwilling: Schulungssystem Bohrtechnik")
+st.title("KI - Labor Bohrtechnik")
 
 if st.session_state.twin['t_current'] >= mat['temp_crit'] and not st.session_state.twin['broken']:
     st.markdown(f'<div class="melt-warning">🔥 MATERIAL-KOLLAPS: TEMPERATUR ÜBER SCHMELZPUNKT ({mat["temp_crit"]}°C)!</div>', unsafe_allow_html=True)
