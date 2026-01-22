@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI - Digital Twin: Full XAI Drill Monitoring", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI - Digitaler Zwilling: Vollständiges Bohr-Monitoring", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -81,7 +81,7 @@ MATERIALIEN = {
     "Titan-Legierung": {"kc1.1": 2900, "mc": 0.24, "wear_rate": 1.1, "temp_crit": 750}
 }
 
-# --- 4. SIDEBAR ---
+# --- 4. SEITENLEISTE ---
 with st.sidebar:
     st.header("⚙️ Prozess-Parameter")
     mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
@@ -94,7 +94,7 @@ with st.sidebar:
     st.header("📡 Sensor-Konfiguration")
     sens_vib = st.slider("Vibrations-Empfindlichkeit", 0.1, 5.0, 1.0)
     sens_load = st.slider("Last-Empfindlichkeit", 0.1, 5.0, 1.0)
-    cycle_step = st.number_input("Schrittweite", 1, 50, 1)
+    cycle_step = st.number_input("Zyklus-Schrittweite", 1, 50, 1)
     sim_speed = st.select_slider("Verzögerung (ms)", options=[500, 200, 100, 50, 10, 0], value=50)
 
 # --- 5. LOGIK ---
@@ -136,16 +136,17 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     zeit = time.strftime("%H:%M:%S")
     log_data = {
         'zeit': zeit, 'zyk': s['cycle'], 'risk': s['risk'], 'integ': s['integrity'],
-        'age': ["NEU", "GEBR.", "ALT"][age_cat], 'load': "HOCH" if load_cat else "NORM",
-        'therm': "CRIT" if s['t_current'] >= mat['temp_crit'] else "OK",
+        'age': ["NEUWERTIG", "GEBRAUCHT", "ALT"][age_cat], 
+        'load': "ÜBERLAST" if load_cat else "NORMAL",
+        'therm': "KRITISCH" if s['t_current'] >= mat['temp_crit'] else "STABIL",
         'temp': s['t_current'], 'md': mc_raw, 'wear': s['wear'], 'vib': s['vib'],
         'f_loss': fatigue, 'a_loss': acute_damage, 't_loss': thermal_collapse
     }
     s['logs'].insert(0, log_data)
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'i': s['integrity'], 'v': s['vib']})
 
-# --- 6. UI ---
-st.title("KI - Digital Twin: Full XAI Drill Monitoring")
+# --- 6. BENUTZEROBERFLÄCHE ---
+st.title("KI - Digitaler Zwilling: Vollständiges Bohr-Monitoring")
 
 if st.session_state.twin['t_current'] >= mat['temp_crit'] and not st.session_state.twin['broken']:
     st.markdown(f'<div class="melt-warning">🔥 MATERIAL-KOLLAPS: TEMPERATUR ÜBER SCHMELZPUNKT ({mat["temp_crit"]}°C)!</div>', unsafe_allow_html=True)
@@ -153,15 +154,15 @@ if st.session_state.twin['t_current'] >= mat['temp_crit'] and not st.session_sta
 if st.session_state.twin['broken']:
     st.error("🚨 KATASTROPHALER WERKZEUGAUSFALL: Strukturintegrität bei 0%!", icon="💥")
 
-col_metrics, col_main, col_logs = st.columns([1, 2, 1.4])
+col_metriken, col_haupt, col_protokoll = st.columns([1, 2, 1.4])
 
-with col_metrics:
+with col_metriken:
     st.markdown(f'<div class="glass-card"><span class="val-title">Struktur-Integrität</span><br><span class="val-main" style="color:#3fb950">{max(0, st.session_state.twin["integrity"]):.1f} %</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="glass-card"><span class="val-title">Bohrertemperatur</span><br><span class="val-main" style="color:#f85149">{st.session_state.twin["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="glass-card"><span class="val-title">Vibration</span><br><span class="val-main" style="color:#58a6ff">{st.session_state.twin["vib"]:.2f} mm/s</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{st.session_state.twin["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
 
-with col_main:
+with col_haupt:
     ttf = "---"
     if len(st.session_state.twin['history']) > 5:
         df_h = pd.DataFrame(st.session_state.twin['history'])
@@ -169,7 +170,7 @@ with col_main:
         ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.00001, z[0])))
     
     is_critical = st.session_state.twin['risk'] > 0.7 or st.session_state.twin['integrity'] < 40
-    st.markdown(f'<div class="{"warning-card" if is_critical else "predictive-card"}"><span class="val-title">🔮 Predictive Maintenance TTF</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis empfohlener Wartung</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{"warning-card" if is_critical else "predictive-card"}"><span class="val-title">🔮 Vorausschauende Wartung</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis empfohlener Wartung</span></div>', unsafe_allow_html=True)
     
     if len(st.session_state.twin['history']) > 0:
         df_p = pd.DataFrame(st.session_state.twin['history'])
@@ -181,39 +182,40 @@ with col_main:
         fig.update_layout(height=600, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig, use_container_width=True)
 
-with col_logs:
-    st.markdown('<p class="val-title">Echtzeit XAI-System Monitor</p>', unsafe_allow_html=True)
+with col_protokoll:
+    st.markdown('<p class="val-title">Echtzeit Erklärbare-KI Monitor (XAI)</p>', unsafe_allow_html=True)
     
-    # HTML-Monitor Generierung für IFrame (Isoliert gegen Rendering-Fehler)
-    html_entries = ""
-    for l in st.session_state.twin['logs'][:20]:
-        status_col = "#f85149" if l['risk'] > 0.6 else "#3fb950"
-        html_entries += f"""
-        <div style="margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px; font-family: 'Courier New', monospace; font-size: 12px; color: #3fb950;">
-            <div style="display: flex; justify-content: space-between;">
-                <span style="color:#58a6ff; font-weight:bold;">[{l['zeit']}] ZYK: {l['zyk']}</span>
-                <span style="color:{status_col}; font-weight:bold;">RISK: {l['risk']:.1%}</span>
+    html_eintraege = ""
+    for l in st.session_state.twin['logs'][:15]:
+        status_farbe = "#f85149" if l['risk'] > 0.6 else "#3fb950"
+        html_eintraege += f"""
+        <div style="margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #e1e4e8;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <b style="color:#58a6ff;">[{l['zeit']}] ZYKLUS: {l['zyk']}</b>
+                <b style="color:{status_farbe};">AUSFALLRISIKO: {l['risk']:.1%}</b>
             </div>
-            <div style="margin-top:4px;">
-                <span style="color:#e3b341; font-weight:bold;">INTG:</span> {l['integ']:.2f}% | 
-                <span style="color:#e3b341; font-weight:bold;">VIB:</span> {l['vib']:.2f}mm/s | 
-                <span style="color:#e3b341; font-weight:bold;">XAI:</span> {l['age']}/{l['load']}/{l['therm']}
+            <div style="margin-top:2px;">
+                <span style="color:#e3b341; font-weight:bold;">INTEGRITÄT:</span> {l['integ']:.2f}% | 
+                <span style="color:#e3b341; font-weight:bold;">VIBRATION:</span> {l['vib']:.2f} mm/s
             </div>
-            <div style="color: #8b949e; font-size: 11px; margin-top:2px;">
-                T: {l['temp']:.1f}°C | Md: {l['md']:.1f}Nm | W: {l['wear']:.1f}%
+            <div style="margin-top:2px;">
+                <span style="color:#e3b341; font-weight:bold;">KI-EVIDENZ:</span> {l['age']} / {l['load']} / {l['therm']}
             </div>
-            <div style="color: #6a737d; font-size: 10px; font-style: italic;">
-                LOSS_STRATEGY -> Fatigue: {l['f_loss']:.4f} | Load: {l['a_loss']:.4f} | <span style="color:#f85149;">Thermal: {l['t_loss']:.4f}</span>
+            <div style="color: #8b949e; font-size: 12px; margin-top:4px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 4px;">
+                <b>SENSORIK:</b> {l['temp']:.1f}°C | Drehmoment: {l['md']:.1f}Nm | Verschleiß: {l['wear']:.1f}%
+            </div>
+            <div style="color: #6a737d; font-size: 11px; margin-top:4px;">
+                <b>VERLUST-BREAKDOWN:</b> Ermüdung: {l['f_loss']:.4f} | Last-Peak: {l['a_loss']:.4f} | <span style="color:#f85149;">Thermischer Kollaps: {l['t_loss']:.4f}</span>
             </div>
         </div>
         """
     
-    full_html = f"""
-    <div style="background: #010409; padding: 10px; border-radius: 8px; border: 1px solid #30363d; height: 500px; overflow-y: auto;">
-        {html_entries}
+    voll_html = f"""
+    <div style="background: #010409; padding: 15px; border-radius: 8px; border: 1px solid #30363d; height: 500px; overflow-y: auto; scrollbar-width: thin;">
+        {html_eintraege}
     </div>
     """
-    st.components.v1.html(full_html, height=520)
+    st.components.v1.html(voll_html, height=520)
 
 st.divider()
 c1, c2 = st.columns(2)
@@ -221,7 +223,7 @@ with c1:
     if st.button("▶ START / STOPP", use_container_width=True, disabled=st.session_state.twin['broken']):
         st.session_state.twin['active'] = not st.session_state.twin['active']
 with c2:
-    if st.button("🔄 RESET & REPARATUR", use_container_width=True):
+    if st.button("🔄 ZWILLING REPARIEREN & RESET", use_container_width=True):
         st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'vib': 0.1, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
         st.rerun()
 
