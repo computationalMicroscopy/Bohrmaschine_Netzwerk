@@ -34,20 +34,23 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-LOGIK (INFERENZ & ERKLÄRBARKEIT) ---
+# --- 2. KI-LOGIK (FEINJUSTIERTE INFERENZ) ---
 def calculate_metrics(alter, last, thermik, vibration, kss_ausfall, integritaet):
-    w = [1.5, 2.8, 4.2, 3.5, 5.0, 0.12]
+    # Gewichtung leicht gedämpft für realistischeren Anstieg
+    w = [1.2, 2.4, 3.8, 3.0, 4.5, 0.10]
     scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kss_ausfall * w[4], (100 - integritaet) * w[5]]
     z = sum(scores)
-    risk = 1 / (1 + np.exp(-(z - 8.0)))
+    # Schwellenwert von 8.0 auf 9.5 erhöht für "späteren" steilen Anstieg
+    risk = 1 / (1 + np.exp(-(z - 9.5)))
     
     labels = ["Alterung (Zyklen)", "Mechanische Last (Drehmoment)", "Prozess-Thermik (Hitze)", "Vibrations-Trauma (Instabilität)", "KSS-Defizit (Kühlung)", "Vorschaden (Struktur)"]
     evidenz = sorted(zip(labels, scores), key=lambda x: x[1], reverse=True)
     
-    if risk > 0.95 or integritaet <= 0: zyklen_bis_wartung = 0
+    if risk > 0.98 or integritaet <= 0: zyklen_bis_wartung = 0
     else:
-        verbleibend = max(0, (integritaet - 15) / max(0.01, (risk * 0.6)))
-        zyklen_bis_wartung = int(verbleibend * 4.5)
+        # Stabilere RUL-Berechnung
+        verbleibend = max(0, (integritaet - 10) / max(0.01, (risk * 0.45)))
+        zyklen_bis_wartung = int(verbleibend * 5.5)
         
     return np.clip(risk, 0.001, 0.999), evidenz, zyklen_bis_wartung
 
@@ -56,7 +59,7 @@ if 'twin' not in st.session_state:
     st.session_state.twin = {
         'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False,
         'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42),
-        'rul': 500, 'drehmoment': 0.0
+        'rul': 800, 'drehmoment': 0.0
     }
 
 MATERIALIEN = {
@@ -118,7 +121,7 @@ if s['active'] and not s['broken']:
 tab1, tab2 = st.tabs(["📊 LIVE-PROZESS-ANALYSE", "🧪 SZENARIO-LABOR"])
 
 with tab1:
-    if s['broken']: st.markdown('<div class="emergency-alert">🚨 KRITISCHER AUSFALL: STRUKTURVERSAGEN DETEKTIERT</div>', unsafe_allow_html=True)
+    if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: STRUKTURVERSAGEN DETEKTIERT</div>', unsafe_allow_html=True)
     
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     with m1: st.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
@@ -189,7 +192,7 @@ with tab2:
 st.divider()
 if st.button("▶ SIMULATION START / STOPP", use_container_width=True): s['active'] = not s['active']
 if st.button("🔄 SYSTEM-RESET (NEUES WERKZEUG)", use_container_width=True):
-    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 500, 'drehmoment': 0.0}
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
     st.rerun()
 
 if s['active']:
