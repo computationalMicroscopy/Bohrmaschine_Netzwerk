@@ -49,28 +49,37 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-ENGINE ---
+# --- 2. KI-ENGINE (ERWEITERT UM INTEGRITÄT ALS INPUT) ---
 @st.cache_resource
 def get_engine():
-    model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
+    # Wir fügen 'Integrity' als direkten Einflussfaktor für 'State' hinzu
+    model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State'), ('Health', 'State')])
+    
+    # Definition der CPDs (vereinfacht für das Schulungsmodell)
     cpd_age = TabularCPD('Age', 3, [[0.33], [0.33], [0.34]])
     cpd_load = TabularCPD('Load', 2, [[0.8], [0.2]])
     cpd_therm = TabularCPD('Therm', 2, [[0.9], [0.1]])
     cpd_cool = TabularCPD('Cool', 2, [[0.95], [0.05]])
+    cpd_health = TabularCPD('Health', 3, [[0.33], [0.33], [0.34]]) # 0: Stabil, 1: Geschwächt, 2: Kritisch
+
     z_matrix = []
     for age in range(3):
         for load in range(2):
             for therm in range(2):
                 for cool in range(2):
-                    score = (age * 2) + (load * 4) + (therm * 7) + (cool * 8)
-                    if score <= 3: v = [0.99, 0.005, 0.005]
-                    elif score <= 8: v = [0.60, 0.35, 0.05]
-                    elif score <= 12: v = [0.15, 0.45, 0.40]
-                    elif score <= 16: v = [0.05, 0.15, 0.80]
-                    else: v = [0.01, 0.04, 0.95]
-                    z_matrix.append(v)
-    cpd_state = TabularCPD('State', 3, np.array(z_matrix).T, ['Age', 'Load', 'Therm', 'Cool'], [3, 2, 2, 2])
-    model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state)
+                    for health in range(3):
+                        # Die Gesundheit (health) hat jetzt massiven Einfluss auf den Score
+                        score = (age * 1.5) + (load * 3) + (therm * 5) + (cool * 6) + (health * 8)
+                        if score <= 4: v = [0.99, 0.005, 0.005]
+                        elif score <= 10: v = [0.60, 0.35, 0.05]
+                        elif score <= 16: v = [0.15, 0.45, 0.40]
+                        else: v = [0.01, 0.04, 0.95]
+                        z_matrix.append(v)
+    
+    cpd_state = TabularCPD('State', 3, np.array(z_matrix).T, 
+                           ['Age', 'Load', 'Therm', 'Cool', 'Health'], [3, 2, 2, 2, 3])
+    
+    model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_health, cpd_state)
     return VariableElimination(model)
 
 # --- 3. INITIALISIERUNG ---
@@ -119,15 +128,30 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s['vib'] = (base_vib + integrity_penalty) * sens_vib + s['seed'].normal(0, 0.2)
     s['vib'] = max(0.1, s['vib'])
 
+    # --- KI-EVIDENZ AUFBEREITUNG ---
     age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
     load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
     therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
     cool_cat = 0 if cooling else 1
-    engine = get_engine()
-    s['risk'] = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
+    
+    # NEU: Umwandlung der Integrität in KI-Evidenz
+    if s['integrity'] > 70: health_cat = 0    # Stabil
+    elif s['integrity'] > 30: health_cat = 1  # Geschwächt
+    else: health_cat = 2                     # Kritisch (Vorschaden)
 
+    engine = get_engine()
+    s['risk'] = engine.query(['State'], evidence={
+        'Age': age_cat, 
+        'Load': load_cat, 
+        'Therm': therm_cat, 
+        'Cool': cool_cat,
+        'Health': health_cat # Die KI "sieht" jetzt den inneren Zustand
+    }).values[2]
+
+    # --- SCHADENS-BERECHNUNG ---
     fatigue = (s['wear'] / 100) * 0.05 * cycle_step
-    acute_damage = (s['risk'] ** 3) * 0.5 * cycle_step if s['risk'] > 0.4 else 0
+    # Das akute Risiko skaliert jetzt noch heftiger mit dem KI-Wert
+    acute_damage = (s['risk'] ** 2.5) * 0.7 * cycle_step if s['risk'] > 0.2 else 0
     thermal_collapse = 0
     if s['t_current'] >= mat['temp_crit']:
         t_diff = s['t_current'] - mat['temp_crit']
@@ -143,6 +167,7 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     log_data = {
         'zeit': zeit, 'zyk': s['cycle'], 'risk': s['risk'], 'integ': s['integrity'],
         'age': ["NEUWERTIG", "GEBRAUCHT", "ALT"][age_cat], 
+        'health_str': ["STABIL", "GESCHWÄCHT", "KRITISCH"][health_cat],
         'load_status': load_cat,
         'therm': "KRITISCH" if s['t_current'] >= mat['temp_crit'] else "STABIL",
         'temp': s['t_current'], 'md': mc_raw, 'wear': s['wear'], 'vib': s['vib'],
@@ -158,11 +183,9 @@ st.title("KI - Labor Bohrtechnik")
 if st.session_state.twin['broken']:
     st.markdown('<div class="emergency-alert">🚨 TOTALAUSFALL: WERKZEUG GEBROCHEN!</div>', unsafe_allow_html=True)
 elif st.session_state.twin['integrity'] < 15:
-    st.markdown('<div class="emergency-alert">⚠️ SOFORT-STOPP: KRITISCHES VERSAGEN STEHT BEVOR (<15%)!</div>', unsafe_allow_html=True)
-elif st.session_state.twin['risk'] > 0.8:
-    st.warning(f"⚠️ KRITISCHES KI-RISIKO ({st.session_state.twin['risk']:.1%}): Die Kombination der Parameter deutet auf sofortigen Verschleiß-Exzess hin!")
-elif st.session_state.twin['t_current'] >= mat['temp_crit']:
-    st.markdown(f'<div class="melt-warning">🔥 THERMISCHE ÜBERLAST: MATERIALGEFÜGE GEFÄHRDET ({st.session_state.twin["t_current"]:.1f}°C)!</div>', unsafe_allow_html=True)
+    st.markdown('<div class="emergency-alert">⚠️ SOFORT-STOPP: KRITISCHER VORSCHADEN (<15%)!</div>', unsafe_allow_html=True)
+elif st.session_state.twin['risk'] > 0.7:
+    st.warning(f"⚠️ HOCHRISIKO-BEREICH: KI erkennt instabilen Systemzustand ({st.session_state.twin['risk']:.1%})!")
 
 col_metriken, col_haupt, col_protokoll = st.columns([1, 2, 1.4])
 
@@ -179,7 +202,7 @@ with col_haupt:
         z = np.polyfit(df_h['c'], df_h['w'], 1)
         ttf = max(0, int((100 - st.session_state.twin['wear']) / max(0.00001, z[0])))
     
-    is_critical = st.session_state.twin['risk'] > 0.7 or st.session_state.twin['integrity'] < 40
+    is_critical = st.session_state.twin['risk'] > 0.6 or st.session_state.twin['integrity'] < 40
     st.markdown(f'<div class="{"warning-card" if is_critical else "predictive-card"}"><span class="val-title">🔮 Vorausschauende Wartung (TTF)</span><br><div class="ttf-val">{ttf}</div><span class="val-title">Zyklen bis empfohlener Wartung</span></div>', unsafe_allow_html=True)
     
     if len(st.session_state.twin['history']) > 0:
@@ -202,23 +225,19 @@ with col_protokoll:
         <div style="margin-bottom: 25px; border-bottom: 2px solid #333; padding-bottom: 15px; font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #e1e4e8;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                 <b style="color:#58a6ff;">[{l['zeit']}] ZYKLUS: {l['zyk']}</b>
-                <b style="color:{status_farbe};">KRITISCHES RISIKO: {l['risk']:.1%}</b>
+                <b style="color:{status_farbe};">RISIKO: {l['risk']:.1%}</b>
             </div>
             
             <div style="background: rgba(255, 255, 255, 0.03); padding: 8px; border-radius: 4px; border-left: 3px solid #e3b341; margin-bottom: 8px;">
-                <b style="color:#e3b341; font-size: 11px; text-transform: uppercase;">KI-ENTSCHEIDUNGSGRUNDLAGE (EVIDENZ):</b><br>
-                <b>Werkzeugalter:</b> {l['age']} | <b>Lastzustand:</b> {"HOCH" if l['load_status'] else "NORMAL"} | <b>Thermischer Status:</b> {l['therm']}
+                <b style="color:#e3b341; font-size: 11px; text-transform: uppercase;">KI-EVIDENZ (INPUT):</b><br>
+                <b>Alter:</b> {l['age']} | <b>Materialzustand:</b> {l['health_str']} | <b>Last:</b> {"HOCH" if l['load_status'] else "NORMAL"}
             </div>
 
             <div style="background: rgba(248, 81, 73, 0.05); padding: 8px; border-radius: 4px; border-left: 3px solid #f85149; margin-bottom: 8px;">
-                <b style="color:#f85149; font-size: 11px; text-transform: uppercase;">DETAILLIERTE URSACHENANALYSE DER MATERIALSCHÄDIGUNG:</b><br>
-                <div style="margin-top:4px;">• <b>Stetiger Substanzverlust:</b> -{l['f_loss']:.4f}% <span style="color:#8b949e; font-size:11px;">(Verschleiß der Schneidkante)</span></div>
-                <div>• <b>Mechanische Schadenslast:</b> -{l['a_loss']:.4f}% <span style="color:#8b949e; font-size:11px;">(Überbeanspruchung des Werkzeugkörpers)</span></div>
-                <div>• <b>Thermische Gefügezerstörung:</b> <span style="color:#f85149;">-{l['t_loss']:.4f}%</span> <span style="color:#8b949e; font-size:11px;">(Hitzeinduzierter Härteverlust)</span></div>
-            </div>
-
-            <div style="color: #8b949e; font-size: 12px; padding: 4px;">
-                <b>AKTUELL GEMESSEN:</b> {l['temp']:.1f}°C | Vibration: {l['vib']:.2f} mm/s | Drehmoment: {l['md']:.1f} Nm
+                <b style="color:#f85149; font-size: 11px; text-transform: uppercase;">URSACHENANALYSE DER MATERIALSCHÄDIGUNG:</b><br>
+                <div style="margin-top:4px;">• <b>Substanzverlust:</b> -{l['f_loss']:.4f}%</div>
+                <div>• <b>Akute Schadenslast:</b> -{l['a_loss']:.4f}%</div>
+                <div>• <b>Gefügezerstörung:</b> -{l['t_loss']:.4f}%</div>
             </div>
         </div>
         """
@@ -236,7 +255,7 @@ with c1:
     if st.button("▶ START / STOPP", key="start_btn", use_container_width=True, disabled=st.session_state.twin['broken']):
         st.session_state.twin['active'] = not st.session_state.twin['active']
 with c2:
-    if st.button("🔄 ZWILLING REPARIEREN & RESET", key="reset_btn", use_container_width=True):
+    if st.button("🔄 REPARIEREN & RESET", key="reset_btn", use_container_width=True):
         st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'vib': 0.1, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
         st.rerun()
 
