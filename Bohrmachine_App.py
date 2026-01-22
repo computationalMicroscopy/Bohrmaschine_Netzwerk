@@ -1,15 +1,18 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import time
+
+# Import-Fix für pgmpy 0.1.25+ 
 try:
-    from pgmpy.models import BayesianNetwork
-except ImportError:
     from pgmpy.models import DiscreteBayesianNetwork as BayesianNetwork
+except ImportError:
+    from pgmpy.models import BayesianNetwork
+
 from pgmpy.factors.discrete import TabularCPD
 from pgmpy.inference import VariableElimination
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import time
 
 # --- 1. SETUP & DESIGN ---
 st.set_page_config(layout="wide", page_title="KI - Bohrmaschinen Simulations- und Wartungstool", page_icon="⚙️")
@@ -37,10 +40,12 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-ENGINE (Maximale Dynamik) ---
+# --- 2. KI-ENGINE ---
 @st.cache_resource
 def get_engine():
+    # Wir initialisieren hier explizit die korrekte Klasse
     model = BayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
+    
     cpd_age = TabularCPD('Age', 3, [[0.33], [0.33], [0.34]])
     cpd_load = TabularCPD('Load', 2, [[0.8], [0.2]])
     cpd_therm = TabularCPD('Therm', 2, [[0.9], [0.1]])
@@ -51,7 +56,6 @@ def get_engine():
         for load in range(2):
             for therm in range(2):
                 for cool in range(2):
-                    # Risiko-Score: Schwere Gewichtung von Kühlung und Thermik
                     score = (age * 2) + (load * 4) + (therm * 7) + (cool * 8)
                     if score <= 3: v = [0.99, 0.005, 0.005]
                     elif score <= 8: v = [0.60, 0.35, 0.05]
@@ -97,7 +101,7 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
 
-    # Physik-Engine
+    # Physik-Berechnung
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
     s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300)) * cycle_step
@@ -118,11 +122,9 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
         s['broken'] = True
         s['active'] = False
 
-    # Logging & Historie
-    age_txt = ["Neu", "Mittel", "Alt"][age_cat]
     zeit = time.strftime("%H:%M:%S")
     s['history'].append({'c': s['cycle'], 'r': risk, 'w': s['wear'], 't': s['t_current'], 'amp': amp, 'mc': mc_raw})
-    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} | RISIKO: {risk:.1%} | Md: {mc_raw:.1f}Nm\n ➔ KI: [Alter: {age_txt} | Last: {'HOCH' if load_cat else 'OK'} | Temp: {'KRIT' if therm_cat else 'OK'}]")
+    s['logs'].insert(0, f"[{zeit}] ZYK {s['cycle']} | RISIKO: {risk:.1%} | Md: {mc_raw:.1f}Nm")
 
 # --- 6. UI ---
 st.title("KI - Bohrmaschinen Simulations- und Wartungstool")
