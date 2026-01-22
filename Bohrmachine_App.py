@@ -189,23 +189,25 @@ with col_protokoll:
     for l in st.session_state.twin['logs'][:15]:
         status_farbe = "#f85149" if l['risk'] > 0.6 else "#3fb950"
         html_eintraege += f"""
-        <div style="margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #e1e4e8;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <div style="margin-bottom: 20px; border-bottom: 2px solid #222; padding-bottom: 12px; font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #e1e4e8;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                 <b style="color:#58a6ff;">[{l['zeit']}] ZYKLUS: {l['zyk']}</b>
                 <b style="color:{status_farbe};">AUSFALLRISIKO: {l['risk']:.1%}</b>
             </div>
-            <div style="margin-top:2px;">
+            <div style="margin-bottom: 4px;">
                 <span style="color:#e3b341; font-weight:bold;">INTEGRITÄT:</span> {l['integ']:.2f}% | 
                 <span style="color:#e3b341; font-weight:bold;">VIBRATION:</span> {l['vib']:.2f} mm/s
             </div>
-            <div style="margin-top:2px;">
-                <span style="color:#e3b341; font-weight:bold;">KI-EVIDENZ:</span> {l['age']} / {l['load']} / {l['therm']}
+            <div style="background: rgba(88, 166, 255, 0.1); padding: 6px; border-radius: 4px; border-left: 3px solid #58a6ff; margin-bottom: 6px;">
+                <b style="color:#58a6ff; font-size: 11px; text-transform: uppercase;">KI-EVIDENZ (URSACHENANALYSE):</b><br>
+                <b>Alter:</b> {l['age']} | <b>Last:</b> {l['load']} | <b>Thermik:</b> {l['therm']}
             </div>
-            <div style="color: #8b949e; font-size: 12px; margin-top:4px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 4px;">
-                <b>SENSORIK:</b> {l['temp']:.1f}°C | Drehmoment: {l['md']:.1f}Nm | Verschleiß: {l['wear']:.1f}%
+            <div style="color: #8b949e; font-size: 12px; margin-bottom: 6px;">
+                <b>SENSORIK-ROHDATEN:</b> {l['temp']:.1f}°C | Drehmoment: {l['md']:.1f}Nm | Verschleiß: {l['wear']:.1f}%
             </div>
-            <div style="color: #6a737d; font-size: 11px; margin-top:4px;">
-                <b>VERLUST-BREAKDOWN:</b> Ermüdung: {l['f_loss']:.4f} | Last-Peak: {l['a_loss']:.4f} | <span style="color:#f85149;">Thermischer Kollaps: {l['t_loss']:.4f}</span>
+            <div style="color: #6a737d; font-size: 11px;">
+                <b>PHYSIKALISCHER SCHADENS-BREAKDOWN:</b><br>
+                Ermüdung: {l['f_loss']:.4f} | Last-Peak: {l['a_loss']:.4f} | <span style="color:#f85149;">Thermischer Kollaps: {l['t_loss']:.4f}</span>
             </div>
         </div>
         """
