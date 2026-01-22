@@ -31,32 +31,35 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. KI-LOGIK (MULTIVARIATE INFERENZ) ---
-def calculate_risk_inference(alter, last, thermik, vibration, kss_ausfall, integritaet):
-    # Gewichtete Logik-Faktoren für XAI-Evidenz
+# --- 2. KI-LOGIK (INFERENZ & RUL) ---
+def calculate_metrics(alter, last, thermik, vibration, kss_ausfall, integritaet):
+    # Risiko-Inferenz
     w = [1.5, 2.8, 4.2, 3.5, 5.0, 0.12]
-    scores = [
-        alter * w[0], 
-        last * w[1], 
-        thermik * w[2], 
-        vibration * w[3], 
-        kss_ausfall * w[4], 
-        (100 - integritaet) * w[5]
-    ]
+    scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kss_ausfall * w[4], (100 - integritaet) * w[5]]
     z = sum(scores)
     risk = 1 / (1 + np.exp(-(z - 8.0)))
     
-    # Evidenz-Ranking (Welcher Faktor dominiert die Entscheidung?)
+    # KI-Evidenz Ranking
     labels = ["Alter", "Last", "Thermik", "Vib", "KSS", "Struktur"]
     evidenz = sorted(zip(labels, scores), key=lambda x: x[1], reverse=True)
     
-    return np.clip(risk, 0.001, 0.999), evidenz
+    # Wartungsprognose (Zyklen bis Wartung)
+    # Basierend auf dem Gradienten der Integrität und dem aktuellen Risiko
+    if risk > 0.9 or integritaet <= 0:
+        zyklen_bis_wartung = 0
+    else:
+        # Dynamische Schätzung der verbleibenden Zyklen
+        verbleibend = max(0, (integritaet - 20) / max(0.01, (risk * 0.5)))
+        zyklen_bis_wartung = int(verbleibend * 5)
+        
+    return np.clip(risk, 0.001, 0.999), evidenz, zyklen_bis_wartung
 
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {
         'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False,
-        'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42)
+        'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42),
+        'rul': 500
     }
 
 MATERIALIEN = {
@@ -100,8 +103,8 @@ if s['active'] and not s['broken']:
     s['vibration'] = (vibr_base * sens_vibr) + s['seed'].normal(0, 0.25)
     s['vibration'] = max(0.1, s['vibration'])
     
-    # Inferenz mit Evidenz-Output
-    s['risk'], evidenz_list = calculate_risk_inference(s['zyklus']/1000, drehmoment/60, s['thermik']/m['t_crit'], s['vibration']/10, 1.0 if not kss else 0.0, s['integritaet'])
+    # Inferenz mit RUL
+    s['risk'], evidenz_list, s['rul'] = calculate_metrics(s['zyklus']/1000, drehmoment/60, s['thermik']/m['t_crit'], s['vibration']/10, 1.0 if not kss else 0.0, s['integritaet'])
     
     loss_fatigue = (s['verschleiss'] / 100) * 0.04 * zyklus_sprung
     loss_load = (drehmoment / 100) * 0.01 * zyklus_sprung
@@ -115,10 +118,10 @@ if s['active'] and not s['broken']:
         'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'integ': s['integritaet'], 
         'last': drehmoment, 'temp': s['thermik'], 'vib': s['vibration'],
         'f_loss': loss_fatigue, 'l_loss': loss_load, 't_loss': loss_thermal, 'v_loss': loss_vibr,
-        'evidenz': evidenz_list[:3] # Top 3 Gründe
+        'evidenz': evidenz_list[:3], 'rul': s['rul']
     }
     s['logs'].insert(0, log)
-    s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
+    s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'rul': s['rul']})
 
 # --- 6. UI DASHBOARD ---
 tab1, tab2 = st.tabs(["📊 LIVE-PROZESS-ANALYSE", "🧪 EXPERIMENTELLES SZENARIO-LABOR"])
@@ -126,21 +129,23 @@ tab1, tab2 = st.tabs(["📊 LIVE-PROZESS-ANALYSE", "🧪 EXPERIMENTELLES SZENARI
 with tab1:
     if s['broken']: st.markdown('<div class="emergency-alert">🚨 KRITISCHER AUSFALL: WERKZEUG-INTEGRITÄT BEI 0%</div>', unsafe_allow_html=True)
     
-    m1, m2, m3, m4, m5 = st.columns(5)
-    with m1: st.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.2f}%</span></div>', unsafe_allow_html=True)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    with m1: st.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
     with m2: st.markdown(f'<div class="glass-card"><span class="val-title">Bruchrisiko</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
-    with m3: st.markdown(f'<div class="glass-card"><span class="val-title">Thermik</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.1f}°C</span></div>', unsafe_allow_html=True)
-    with m4: st.markdown(f'<div class="glass-card"><span class="val-title">Vibration</span><br><span class="val-main" style="color:#58a6ff">{s["vibration"]:.2f}</span></div>', unsafe_allow_html=True)
-    with m5: st.markdown(f'<div class="glass-card"><span class="val-title">Last</span><br><span class="val-main" style="color:#bc8cff">{s["logs"][0]["last"]:.1f}Nm</span></div>' if s['logs'] else '---', unsafe_allow_html=True)
+    with m3: st.markdown(f'<div class="glass-card"><span class="val-title">Wartung in...</span><br><span class="val-main" style="color:#58a6ff">{s["rul"]} Z.</span></div>', unsafe_allow_html=True)
+    with m4: st.markdown(f'<div class="glass-card"><span class="val-title">Thermik</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.1f}°C</span></div>', unsafe_allow_html=True)
+    with m5: st.markdown(f'<div class="glass-card"><span class="val-title">Vibration</span><br><span class="val-main" style="color:#bc8cff">{s["vibration"]:.2f}</span></div>', unsafe_allow_html=True)
+    with m6: st.markdown(f'<div class="glass-card"><span class="val-title">Last</span><br><span class="val-main" style="color:#ffffff">{s["logs"][0]["last"]:.1f}Nm</span></div>' if s['logs'] else '---', unsafe_allow_html=True)
 
     col_graph, col_xai = st.columns([2.3, 1.7])
     with col_graph:
         if s['history']:
             df = pd.DataFrame(s['history'])
-            fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.04, subplot_titles=("Struktur-Integrität [%]", "Thermik [°C]", "Vibration [mm/s]", "KI-Bruchrisiko [%]"))
+            fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.04, subplot_titles=("Struktur-Integrität & Wartungshorizont", "Thermik [°C]", "Vibration [mm/s]", "KI-Bruchrisiko [%]"))
             fig.add_trace(go.Scatter(x=df['z'], y=df['i'], name="Integrität", fill='tozeroy', line=dict(color='#3fb950', width=3)), 1, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['rul'], name="Rest-Zyklen", line=dict(color='#58a6ff', dash='dot')), 1, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['t'], name="Thermik", line=dict(color='#f85149')), 2, 1)
-            fig.add_trace(go.Scatter(x=df['z'], y=df['v'], name="Vibration", line=dict(color='#58a6ff')), 3, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['v'], name="Vibration", line=dict(color='#bc8cff')), 3, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['r']*100, name="Risiko", line=dict(color='#e3b341')), 4, 1)
             fig.update_layout(height=800, template="plotly_dark", showlegend=False, margin=dict(l=0,r=0,t=30,b=0))
             st.plotly_chart(fig, use_container_width=True)
@@ -153,7 +158,7 @@ with tab1:
             x_html += f"""
             <div style="border-left: 4px solid #e3b341; background: rgba(255,255,255,0.05); padding: 12px; margin-bottom: 10px; border-radius: 4px; font-size: 12px;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                    <b>ZEIT: {l['zeit']}</b> 
+                    <b>ZEIT: {l['zeit']} | Prognose: {l['rul']} Zyklen</b> 
                     <b style="color:#e3b341;">RISIKO: {l['risk']:.2%}</b>
                 </div>
                 <div style="margin-bottom:8px;">{evidenz_badges}</div>
@@ -167,7 +172,7 @@ with tab1:
         st.components.v1.html(f'<div style="color:white; font-family:sans-serif; height:780px; overflow-y:auto; padding-right:5px;">{x_html}</div>', height=800)
 
 with tab2:
-    st.header("🧪 Was-Wäre-Wenn Simulations-Labor")
+    st.header("🧪 Experimentelles Szenario-Labor")
     sc1, sc2, sc3 = st.columns([1.2, 1.2, 2])
     with sc1:
         sim_alter = st.slider("Werkzeug-Alter [Zyklen]", 0, 2000, 500)
@@ -178,8 +183,8 @@ with tab2:
         sim_vibr = st.slider("Vibrations-Level [mm/s]", 0.0, 20.0, 2.0)
         sim_kss = st.toggle("KSS-Totalausfall simulieren", value=False)
     with sc3:
-        r_sim, evidenz_sim = calculate_risk_inference(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 1.0 if sim_kss else 0.0, sim_integ)
-        st.markdown(f'<div class="glass-card" style="text-align:center;">Prognostiziertes Risiko<h1 style="color:#e3b341; font-size:5rem; margin:10px 0;">{r_sim:.2%}</h1></div>', unsafe_allow_html=True)
+        r_sim, evidenz_sim, rul_sim = calculate_metrics(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 1.0 if sim_kss else 0.0, sim_integ)
+        st.markdown(f'<div class="glass-card" style="text-align:center;">Wartung empfohlen in...<h1 style="color:#58a6ff; font-size:5rem; margin:10px 0;">{rul_sim} Z.</h1><small>Risiko: {r_sim:.1%}</small></div>', unsafe_allow_html=True)
         
         fig_radar = go.Figure(data=go.Scatterpolar(
             r=[sim_alter/20, sim_last/2, sim_temp/10, sim_vibr*5, (100 if sim_kss else 0)],
@@ -191,7 +196,7 @@ with tab2:
 st.divider()
 if st.button("▶ START / STOPP SIMULATION", use_container_width=True): s['active'] = not s['active']
 if st.button("🔄 VOLLSTÄNDIGER RESET", use_container_width=True):
-    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42)}
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 500}
     st.rerun()
 
 if s['active']:
