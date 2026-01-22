@@ -1,5 +1,5 @@
 import streamlit as st
-import pd as pd
+import pandas as pd
 import numpy as np
 from pgmpy.models import DiscreteBayesianNetwork
 from pgmpy.factors.discrete import TabularCPD
@@ -41,6 +41,11 @@ st.markdown("""
     .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
     .val-main { font-family: 'Inter', sans-serif; font-size: 2.2rem; font-weight: 800; margin: 5px 0; }
     .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; }
+    .melt-warning {
+        background: #f85149; color: white; padding: 10px; border-radius: 10px; 
+        font-weight: bold; text-align: center; margin-bottom: 15px;
+        border: 2px solid #ffffff; animation: blinker 1s linear infinite;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -149,11 +154,11 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
 # --- 6. BENUTZEROBERFLÄCHE ---
 st.title("KI - Labor Bohrtechnik")
 
-# --- WARN-ZENTRALE (NEU) ---
+# --- WARN-ZENTRALE ---
 if st.session_state.twin['broken']:
     st.markdown('<div class="emergency-alert">🚨 TOTALAUSFALL: WERKZEUG GEBROCHEN!</div>', unsafe_allow_html=True)
-elif st.session_state.twin['integrity'] < 10:
-    st.markdown('<div class="emergency-alert">⚠️ SOFORT-STOPP: KRITISCHES VERSAGEN STEHT BEVOR (<10%)!</div>', unsafe_allow_html=True)
+elif st.session_state.twin['integrity'] < 15:
+    st.markdown('<div class="emergency-alert">⚠️ SOFORT-STOPP: KRITISCHES VERSAGEN STEHT BEVOR (<15%)!</div>', unsafe_allow_html=True)
 elif st.session_state.twin['risk'] > 0.8:
     st.warning(f"⚠️ KRITISCHES KI-RISIKO ({st.session_state.twin['risk']:.1%}): Die Kombination der Parameter deutet auf sofortigen Verschleiß-Exzess hin!")
 elif st.session_state.twin['t_current'] >= mat['temp_crit']:
@@ -228,10 +233,10 @@ with col_protokoll:
 st.divider()
 c1, c2 = st.columns(2)
 with c1:
-    if st.button("▶ START / STOPP", use_container_width=True, disabled=st.session_state.twin['broken']):
+    if st.button("▶ START / STOPP", key="start_btn", use_container_width=True, disabled=st.session_state.twin['broken']):
         st.session_state.twin['active'] = not st.session_state.twin['active']
 with c2:
-    if st.button("🔄 ZWILLING REPARIEREN & RESET", use_container_width=True):
+    if st.button("🔄 ZWILLING REPARIEREN & RESET", key="reset_btn", use_container_width=True):
         st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'vib': 0.1, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
         st.rerun()
 
