@@ -21,13 +21,10 @@ st.markdown("""
         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
         backdrop-filter: blur(4px); margin-bottom: 15px;
     }
-    .xai-critical { color: #f85149; font-weight: bold; }
-    .xai-info { color: #58a6ff; }
     .predictive-card {
         background: linear-gradient(135deg, rgba(31, 111, 235, 0.2) 0%, rgba(5, 7, 10, 0.8) 100%);
         border: 2px solid #58a6ff; border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px;
     }
-    .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; }
     .emergency-alert {
         background: #f85149; color: white; padding: 20px; border-radius: 10px; 
         font-weight: bold; text-align: center; margin-bottom: 20px;
@@ -38,36 +35,12 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. VERBESSERTE KI-LOGIK (GRAU-STUFEN) ---
-@st.cache_resource
-def get_engine():
-    model = DiscreteBayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State'), ('Health', 'State')])
-    # CPDs bleiben für die Inferenz-Struktur gleich, aber wir nutzen Interpolation für die Anzeige
-    cpd_age = TabularCPD('Age', 3, [[0.33], [0.33], [0.34]])
-    cpd_load = TabularCPD('Load', 2, [[0.8], [0.2]])
-    cpd_therm = TabularCPD('Therm', 2, [[0.9], [0.1]])
-    cpd_cool = TabularCPD('Cool', 2, [[0.95], [0.05]])
-    cpd_health = TabularCPD('Health', 3, [[0.33], [0.33], [0.34]])
-    z_matrix = []
-    for age in range(3):
-        for load in range(2):
-            for therm in range(2):
-                for cool in range(2):
-                    for health in range(3):
-                        score = (age * 1.5) + (load * 3) + (therm * 5) + (cool * 6) + (health * 8)
-                        if score <= 4: v = [0.99, 0.005, 0.005]
-                        elif score <= 10: v = [0.60, 0.35, 0.05]
-                        elif score <= 16: v = [0.15, 0.45, 0.40]
-                        else: v = [0.01, 0.04, 0.95]
-                        z_matrix.append(v)
-    cpd_state = TabularCPD('State', 3, np.array(z_matrix).T, ['Age', 'Load', 'Therm', 'Cool', 'Health'], [3, 2, 2, 2, 3])
-    model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_health, cpd_state)
-    return VariableElimination(model)
-
-def get_continuous_risk(age_val, load_val, therm_val, cool_val, health_val):
-    """Berechnet ein fließendes Risiko statt starrer Kategorien"""
-    base_score = (age_val * 0.15) + (load_val * 0.3) + (therm_val * 0.4) + (cool_val * 0.5) + ((100-health_val) * 0.01)
-    risk = 1 / (1 + np.exp(- (base_score - 1.5) * 4)) # Sigmoid-Funktion für weiche Übergänge
+# --- 2. KI-LOGIK (KONTINUIERLICH & XAI) ---
+def get_continuous_risk(age_norm, load_norm, therm_norm, cool_val, health_norm):
+    """Berechnet ein stufenloses Risiko (0.0 - 1.0) mittels Sigmoid-Logik"""
+    # Gewichtung der Faktoren
+    score = (age_norm * 1.2) + (load_norm * 2.5) + (therm_norm * 4.0) + (cool_val * 3.0) + ((1.0 - health_norm) * 5.0)
+    risk = 1 / (1 + np.exp(-(score - 3.5))) 
     return np.clip(risk, 0.01, 0.99)
 
 # --- 3. INITIALISIERUNG ---
@@ -78,8 +51,8 @@ if 'twin' not in st.session_state:
     }
 
 MATERIALIEN = {
-    "Baustahl (S235JR)": {"kc1.1": 1900, "mc": 0.26, "wear_rate": 0.15, "temp_crit": 450},
-    "Edelstahl (1.4404)": {"kc1.1": 2400, "mc": 0.22, "wear_rate": 0.4, "temp_crit": 600}
+    "Baustahl (S235JR)": {"temp_crit": 450, "wear_mult": 0.005},
+    "Edelstahl (1.4404)": {"temp_crit": 600, "wear_mult": 0.015}
 }
 
 # --- 4. SIDEBAR ---
@@ -87,102 +60,127 @@ with st.sidebar:
     st.header("⚙️ Live-Parameter")
     mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
     mat = MATERIALIEN[mat_name]
-    vc = st.slider("Schnittgeschw. vc [m/min]", 20, 500, 160)
-    f = st.slider("Vorschub f [mm/U]", 0.02, 1.0, 0.18)
-    cooling = st.toggle("Kühlschmierung aktiv", value=True)
-    sim_speed = st.select_slider("Speed (ms)", options=[200, 100, 50, 10, 0], value=50)
+    vc = st.slider("Schnittgeschwindigkeit vc", 20, 500, 160)
+    f = st.slider("Vorschub f", 0.02, 1.0, 0.18)
+    cooling = st.toggle("Kühlung aktiv", value=True)
+    sim_speed = st.select_slider("Sim-Pause (ms)", options=[500, 200, 100, 50, 0], value=50)
 
-# --- 5. LOGIK ---
-if st.session_state.twin['active'] and not st.session_state.twin['broken']:
-    s = st.session_state.twin
+# --- 5. LOGIK (LIVE-SIMULATION) ---
+s = st.session_state.twin # Lokale Referenz für einfacheren Zugriff
+
+if s['active'] and not s['broken']:
     s['cycle'] += 5
+    # Physik
+    s['wear'] += (vc * f * mat['wear_mult']) if cooling else (vc * f * mat['wear_mult'] * 10)
+    s['t_current'] = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
+    s['vib'] = (s['wear'] * 0.1) + (vc * 0.01) + s['seed'].normal(0, 0.3)
     
-    # Physikalische Simulation
-    s['wear'] += (vc * f * 0.005) if cooling else (vc * f * 0.05)
-    s['t_current'] = 22 + (s['wear'] * 1.2) + (vc * 0.3) + (0 if cooling else 300)
-    s['vib'] = (s['wear'] * 0.08) + (vc * 0.01) + s['seed'].normal(0, 0.5)
+    # KI-Berechnung
+    s['risk'] = get_continuous_risk(
+        age_norm = s['cycle']/800, 
+        load_norm = (vc * f)/100, 
+        therm_norm = s['t_current']/mat['temp_crit'], 
+        cool_val = 1.0 if not cooling else 0.0, 
+        health_norm = s['integrity']/100
+    )
     
-    # KI Risiko (Kontinuierlich)
-    s['risk'] = get_continuous_risk(s['cycle']/500, f*5, s['t_current']/mat['temp_crit'], 1 if not cooling else 0, s['integrity'])
-    
-    # Integritätsverlust
-    s['integrity'] -= (0.05 + (s['risk'] * 0.5))
-    if s['integrity'] <= 0: s['broken'], s['active'], s['integrity'] = True, False, 0
+    # Schaden
+    s['integrity'] -= (0.1 + (s['risk'] * 0.8))
+    if s['integrity'] <= 0:
+        s['broken'], s['active'], s['integrity'] = True, False, 0
 
-    # XAI Text-Generierung
+    # XAI-Textgenerierung
     reasons = []
-    if s['t_current'] > mat['temp_crit']: reasons.append(f"Kritische Hitze ({s['t_current']:.0f}°C)")
-    if s['vib'] > 5: reasons.append("Hohe Vibration detektiert")
-    if s['integrity'] < 40: reasons.append("Strukturelle Schwächung")
-    explanation = " & ".join(reasons) if reasons else "Normaler Verschleißprozess"
+    if s['t_current'] > mat['temp_crit']: reasons.append("Thermische Überlast")
+    if s['risk'] > 0.6: reasons.append("KI warnt vor Strukturkollaps")
+    if not cooling and vc > 200: reasons.append("Trockenlauf-Risiko")
+    explanation = " & ".join(reasons) if reasons else "Stabiler Abtrag"
 
-    log_data = {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'integ': s['integrity'], 'expl': explanation, 'temp': s['t_current']}
-    s['logs'].insert(0, log_data)
+    log_entry = {
+        'zeit': time.strftime("%H:%M:%S"), 
+        'risk': s['risk'], 
+        'integ': s['integrity'], 
+        'expl': explanation
+    }
+    s['logs'].insert(0, log_entry)
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'i': s['integrity']})
 
 # --- 6. UI ---
-tab1, tab2 = st.tabs(["📊 LIVE-SYSTEM", "🧪 WAS-WÄRE-WENN (SMOOTH)"])
+tab1, tab2 = st.tabs(["📊 LIVE-MONITORING", "🧪 WAS-WÄRE-WENN (STUFENLOS)"])
 
 with tab1:
-    if st.session_state.twin['broken']: st.markdown('<div class="emergency-alert">🚨 TOTALAUSFALL</div>', unsafe_allow_html=True)
+    if s['broken']:
+        st.markdown('<div class="emergency-alert">🚨 TOTALAUSFALL: BOHRER GEBROCHEN!</div>', unsafe_allow_html=True)
     
-    col_l, col_r = st.columns([2, 1])
-    with col_l:
-        st.markdown(f'<div class="predictive-card">Integrität: {st.session_state.twin["integrity"]:.1f}% | Risiko: {st.session_state.twin["risk"]:.1%}</div>', unsafe_allow_html=True)
-        if s['history']:
+    c_met, c_graph, c_log = st.columns([1, 2, 1.2])
+    
+    with c_met:
+        st.markdown(f'<div class="glass-card"><b>Integrität</b><br><h2>{s["integrity"]:.1f}%</h2></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="glass-card"><b>KI-Risiko</b><br><h2>{s["risk"]:.1% Prime}</h2></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="glass-card"><b>Temperatur</b><br><h2>{s["t_current"]:.1f}°C</h2></div>', unsafe_allow_html=True)
+
+    with c_graph:
+        if len(s['history']) > 0:
             df = pd.DataFrame(s['history'])
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df['c'], y=df['i'], name="Integrität", line=dict(color='#3fb950')))
-            fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, name="KI-Risiko %", line=dict(color='#e3b341')))
-            fig.update_layout(height=400, template="plotly_dark", margin=dict(l=0, r=0, t=0, b=0))
+            fig.add_trace(go.Scatter(x=df['c'], y=df['i'], name="Integrität %", line=dict(color='#3fb950', width=3)))
+            fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, name="KI-Risiko %", line=dict(color='#e3b341', dash='dot')))
+            fig.update_layout(height=400, template="plotly_dark", margin=dict(l=0, r=0, t=10, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Starte die Simulation, um Daten zu sehen.")
 
-    with col_r:
-        st.subheader("XAI Logbuch")
-        for l in st.session_state.twin['logs'][:8]:
-            color = "#f85149" if l['risk'] > 0.5 else "#3fb950"
-            st.markdown(f"""<div style="border-left: 3px solid {color}; padding-left: 10px; margin-bottom: 10px;">
-                <small>{l['zeit']}</small><br>
-                <b>Status: {l['expl']}</b><br>
-                <span style="color:{color}">Risiko: {l['risk']:.1%}</span>
-            </div>""", unsafe_allow_html=True)
+    with c_log:
+        st.markdown("### XAI Analyse-Log")
+        log_html = "".join([f'<div style="border-bottom:1px solid #333; padding:5px;"><small>{l["zeit"]}</small><br><b style="color:{"#f85149" if l["risk"] > 0.5 else "#3fb950"}">{l["expl"]}</b><br>Risiko: {l["risk"]:.1%}</div>' for l in s['logs'][:10]])
+        st.components.v1.html(f'<div style="color:white; font-family:sans-serif; height:400px; overflow-y:auto;">{log_html}</div>', height=420)
 
 with tab2:
-    st.subheader("Stufenlose Szenario-Analyse")
-    st.write("Verstelle die Regler und beobachte, wie sich die Wahrscheinlichkeit im Prozentbereich verändert.")
+    st.header("🧪 Interaktives KI-Szenario")
+    st.write("Verändere die Parameter stufenlos und beobachte, wie die KI jede Nuance bewertet.")
     
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        sim_age = st.slider("Werkzeug-Alter (Zyklen)", 0, 1000, 100)
-        sim_f = st.slider("Vorschub (mm/U)", 0.0, 1.0, 0.2)
-        sim_temp = st.slider("Temperatur (°C)", 20, 800, 100)
-        sim_cool = st.checkbox("Kühlung inaktiv", value=False)
-        sim_health = st.slider("Aktuelle Integrität (%)", 0, 100, 100)
+    cl1, cl2 = st.columns([1, 2])
+    with cl1:
+        sim_age = st.slider("Werkzeugalter (Zyklen)", 0, 1000, 200)
+        sim_f = st.slider("Vorschub (mm/U)", 0.0, 1.0, 0.15)
+        sim_temp = st.slider("Temperatur (°C)", 20, 800, 150)
+        sim_health = st.slider("Struktur-Gesundheit (%)", 0, 100, 100)
+        sim_cool = st.toggle("Kühlung deaktiviert", value=False)
     
-    with c2:
-        res_risk = get_continuous_risk(sim_age/500, sim_f*5, sim_temp/500, 1 if sim_cool else 0, sim_health)
+    with cl2:
+        # Live-Inferenz des Szenarios
+        res_risk = get_continuous_risk(sim_age/800, sim_f*5, sim_temp/500, 1.0 if sim_cool else 0.0, sim_health/100)
         
         fig_gauge = go.Figure(go.Indicator(
             mode = "gauge+number",
             value = res_risk * 100,
-            gauge = {'axis': {'range': [0, 100]}, 'bar': {'color': "orange"}}
+            title = {'text': "Wahrscheinlichkeit Werkzeugbruch (%)"},
+            gauge = {
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "red" if res_risk > 0.7 else "orange"},
+                'steps': [{'range': [0, 40], 'color': "green"}, {'range': [40, 75], 'color': "yellow"}, {'range': [75, 100], 'color': "red"}]
+            }
         ))
-        fig_gauge.update_layout(height=350, template="plotly_dark")
+        fig_gauge.update_layout(height=350, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_gauge, use_container_width=True)
         
-        # Dynamische Analyse des Szenarios
-        st.markdown("### KI-Urteilsbegründung für dieses Szenario:")
-        if sim_temp > 500: st.write("- 🚩 **Gefahr:** Die Temperatur ist für das Materialgefüge kritisch.")
-        if sim_age > 700: st.write("- 🚩 **Gefahr:** Das hohe Alter führt zu mikroskopischen Rissen.")
-        if sim_cool and sim_temp > 300: st.write("- 🚩 **Gefahr:** Fehlende Kühlung beschleunigt den Kollaps.")
-        if res_risk < 0.2: st.write("- ✅ **Sicher:** Alle Parameter liegen im grünen Bereich.")
+        st.markdown("#### KI-Begründung für dieses Szenario:")
+        analysis = []
+        if sim_health < 40: analysis.append("❌ **Vorschaden:** Die geringe Integrität ist der Haupttreiber des Risikos.")
+        if sim_temp > 500: analysis.append("🔥 **Hitze:** Das Materialgefüge wird instabil.")
+        if sim_cool and sim_temp > 300: analysis.append("❄️ **Kühlung:** Fehlende Kühlung bei Hitze wird von der KI als kritisch eingestuft.")
+        if not analysis: analysis.append("✅ **Stabil:** Die Parameter liegen innerhalb der sicheren Betriebsgrenzen.")
+        for a in analysis: st.write(a)
 
 st.divider()
-if st.button("START / STOPP", use_container_width=True):
-    st.session_state.twin['active'] = not st.session_state.twin['active']
-if st.button("RESET"):
-    st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'vib': 0.1, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
-    st.rerun()
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("▶ START / STOPP SIMULATION", use_container_width=True):
+        st.session_state.twin['active'] = not st.session_state.twin['active']
+with col2:
+    if st.button("🔄 SYSTEM-RESET / NEUER BOHRER", use_container_width=True):
+        st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 't_current': 22.0, 'vib': 0.1, 'seed': np.random.RandomState(42), 'risk': 0.0, 'integrity': 100.0}
+        st.rerun()
 
 if st.session_state.twin['active']:
     time.sleep(sim_speed/1000)
