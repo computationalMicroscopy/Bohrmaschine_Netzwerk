@@ -41,7 +41,7 @@ st.markdown("""
 
 st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow_html=True)
 
-# --- 2. KI-LOGIK ---
+# --- 2. KI-LOGIK (FEINJUSTIERT) ---
 def calculate_metrics(alter, last, thermik, vibration, kss_ausfall, integritaet):
     w = [1.2, 2.4, 3.8, 3.0, 4.5, 0.10]
     scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kss_ausfall * w[4], (100 - integritaet) * w[5]]
@@ -66,7 +66,6 @@ if 'twin' not in st.session_state:
         'rul': 800, 'drehmoment': 0.0
     }
 
-# Werkstoffbezeichnungen ohne kryptische Codes
 MATERIALIEN = {
     "Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450},
     "Vergütungsstahl": {"kc1.1": 2100, "mc": 0.25, "rate": 0.25, "t_crit": 550},
@@ -164,10 +163,10 @@ with tab1:
                 <div style="border-top: 1px solid #30363d; padding-top:8px;">
                     <p style="font-size:11px; color:#8b949e; margin-bottom:5px; font-weight:bold;">PHYSIKALISCHE DEGRADATION (DETAIL):</p>
                     <div style="display: grid; grid-template-columns: 1fr 100px; font-size:11px;">
-                        <span class="xai-label">Dauerschwing-Ermüdung (Materialalter)</span><span class="xai-value">-{l['l_fatigue']:.4f}%</span>
-                        <span class="xai-label">Mechanische Lastspitzen (Kraftfluss)</span><span class="xai-value">-{l['l_load']:.4f}%</span>
-                        <span class="xai-label">Thermische Gefügeschwächung (Wärme)</span><span class="xai-value">-{l['l_thermal']:.4f}%</span>
-                        <span class="xai-label">Kinetische Zerrüttung (Vibration)</span><span class="xai-value">-{l['l_vibr']:.4f}%</span>
+                        <span class="xai-label">Dauerschwing-Ermüdung</span><span class="xai-value">-{l['l_fatigue']:.4f}%</span>
+                        <span class="xai-label">Mechanische Lastspitzen</span><span class="xai-value">-{l['l_load']:.4f}%</span>
+                        <span class="xai-label">Thermische Gefügeschwächung</span><span class="xai-value">-{l['l_thermal']:.4f}%</span>
+                        <span class="xai-label">Kinetische Zerrüttung</span><span class="xai-value">-{l['l_vibr']:.4f}%</span>
                         <hr style="grid-column: span 2; border: 0.5px solid #444;">
                         <span style="font-weight:bold; color:#e1e4e8;">Zyklus-Substanzverlust:</span>
                         <span style="font-weight:bold; color:#f85149; text-align:right;">-{(l['l_fatigue']+l['l_load']+l['l_thermal']+l['l_vibr']):.4f}%</span>
@@ -195,7 +194,8 @@ with tab2:
         st.plotly_chart(fig_radar, use_container_width=True)
 
 st.divider()
-if st.button("▶ SIMULATION START / STOPP", use_container_width=True): s['active'] = not s['active']
+if st.button("▶ SIMULATION START / STOPP", use_container_width=True): 
+    s['active'] = not s['active']
 if st.button("🔄 SYSTEM-RESET (NEUES WERKZEUG)", use_container_width=True):
     st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
     st.rerun()
