@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+import pd as pd
 import numpy as np
 from pgmpy.models import DiscreteBayesianNetwork
 from pgmpy.factors.discrete import TabularCPD
@@ -30,13 +30,14 @@ st.markdown("""
         border: 2px solid #f85149; border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px;
         animation: pulse 1.5s infinite;
     }
-    .melt-warning {
-        background: #f85149; color: white; padding: 10px; border-radius: 10px; 
-        font-weight: bold; text-align: center; margin-bottom: 15px;
-        border: 2px solid #ffffff; animation: blinker 1s linear infinite;
+    .emergency-alert {
+        background: #f85149; color: white; padding: 20px; border-radius: 10px; 
+        font-weight: bold; text-align: center; margin-bottom: 20px;
+        border: 4px solid #ffffff; animation: blinker 0.8s linear infinite;
+        font-size: 1.5rem;
     }
-    @keyframes blinker { 50% { opacity: 0.5; } }
-    @keyframes pulse { 0% { box-shadow: 0 0 5px #f85149; } 50% { box-shadow: 0 0 25px #f85149; } 100% { box-shadow: 0 0 5px #f85149; } }
+    @keyframes blinker { 50% { opacity: 0.3; } }
+    @keyframes pulse { 0% { box-shadow: 0 0 5px #f85149; } 50% { box-shadow: 0 0 40px #f85149; } 100% { box-shadow: 0 0 5px #f85149; } }
     .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
     .val-main { font-family: 'Inter', sans-serif; font-size: 2.2rem; font-weight: 800; margin: 5px 0; }
     .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; }
@@ -148,11 +149,15 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
 # --- 6. BENUTZEROBERFLÄCHE ---
 st.title("KI - Labor Bohrtechnik")
 
-if st.session_state.twin['t_current'] >= mat['temp_crit'] and not st.session_state.twin['broken']:
-    st.markdown(f'<div class="melt-warning">🔥 MATERIAL-KOLLAPS: TEMPERATUR ÜBER SCHMELZPUNKT ({mat["temp_crit"]}°C)!</div>', unsafe_allow_html=True)
-
+# --- WARN-ZENTRALE (NEU) ---
 if st.session_state.twin['broken']:
-    st.error("🚨 KATASTROPHALER WERKZEUGAUSFALL: Strukturintegrität bei 0%!", icon="💥")
+    st.markdown('<div class="emergency-alert">🚨 TOTALAUSFALL: WERKZEUG GEBROCHEN!</div>', unsafe_allow_html=True)
+elif st.session_state.twin['integrity'] < 10:
+    st.markdown('<div class="emergency-alert">⚠️ SOFORT-STOPP: KRITISCHES VERSAGEN STEHT BEVOR (<10%)!</div>', unsafe_allow_html=True)
+elif st.session_state.twin['risk'] > 0.8:
+    st.warning(f"⚠️ KRITISCHES KI-RISIKO ({st.session_state.twin['risk']:.1%}): Die Kombination der Parameter deutet auf sofortigen Verschleiß-Exzess hin!")
+elif st.session_state.twin['t_current'] >= mat['temp_crit']:
+    st.markdown(f'<div class="melt-warning">🔥 THERMISCHE ÜBERLAST: MATERIALGEFÜGE GEFÄHRDET ({st.session_state.twin["t_current"]:.1f}°C)!</div>', unsafe_allow_html=True)
 
 col_metriken, col_haupt, col_protokoll = st.columns([1, 2, 1.4])
 
