@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI - Digital Twin: XAI Drill Monitoring", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI - Digital Twin: Full XAI Drill Monitoring", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -40,9 +40,6 @@ st.markdown("""
     .val-title { font-size: 0.85rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
     .val-main { font-family: 'Inter', sans-serif; font-size: 2.2rem; font-weight: 800; margin: 5px 0; }
     .ttf-val { font-family: 'JetBrains Mono', monospace; font-size: 3.5rem; color: #e3b341; }
-    .terminal { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; height: 500px; background: #010409; padding: 15px; border-radius: 10px; border: 1px solid #30363d; color: #3fb950; overflow-y: auto; line-height: 1.5; }
-    .xai-entry { margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 8px; font-family: sans-serif; }
-    .xai-tag { color: #e3b341; font-weight: bold; font-size: 0.75rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -105,20 +102,17 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     s = st.session_state.twin
     s['cycle'] += cycle_step
     
-    # Physik & Verschleiß
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     mc_raw = (fc * d) / 2000
     s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300)) * cycle_step
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.2 + s['seed'].normal(0, 0.4)
     
-    # Vibration (steigt mit Verschleiß und sinkender Integrität)
     base_vib = (s['wear'] * 0.05) + (vc * 0.01)
     integrity_penalty = (100 - s['integrity']) * 0.2
     s['vib'] = (base_vib + integrity_penalty) * sens_vib + s['seed'].normal(0, 0.2)
     s['vib'] = max(0.1, s['vib'])
 
-    # KI Inferenz
     age_cat = 0 if s['cycle'] < 250 else (1 if s['cycle'] < 650 else 2)
     load_cat = 1 if mc_raw > ((d * 2.2) / sens_load) else 0
     therm_cat = 1 if s['t_current'] > mat['temp_crit'] else 0
@@ -126,7 +120,6 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     engine = get_engine()
     s['risk'] = engine.query(['State'], evidence={'Age': age_cat, 'Load': load_cat, 'Therm': therm_cat, 'Cool': cool_cat}).values[2]
 
-    # Schadensmodell
     fatigue = (s['wear'] / 100) * 0.05 * cycle_step
     acute_damage = (s['risk'] ** 3) * 0.5 * cycle_step if s['risk'] > 0.4 else 0
     thermal_collapse = 0
@@ -140,7 +133,6 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
         s['active'] = False
         s['integrity'] = 0
 
-    # Logging
     zeit = time.strftime("%H:%M:%S")
     log_data = {
         'zeit': zeit, 'zyk': s['cycle'], 'risk': s['risk'], 'integ': s['integrity'],
@@ -191,18 +183,37 @@ with col_main:
 
 with col_logs:
     st.markdown('<p class="val-title">Echtzeit XAI-System Monitor</p>', unsafe_allow_html=True)
-    log_content = ""
-    for l in st.session_state.twin['logs'][:15]:
+    
+    # HTML-Monitor Generierung für IFrame (Isoliert gegen Rendering-Fehler)
+    html_entries = ""
+    for l in st.session_state.twin['logs'][:20]:
         status_col = "#f85149" if l['risk'] > 0.6 else "#3fb950"
-        log_content += f"""
-        <div class="xai-entry">
-            <span style="color:#58a6ff; font-weight:bold;">[{l['zeit']}] ZYK {l['zyk']}</span> | <span style="color:{status_col}; font-weight:bold;">RISIKO: {l['risk']:.1%}</span><br>
-            <span class="xai-tag">INT:</span> {l['integ']:.2f}% | <span class="xai-tag">VIB:</span> {l['vib']:.2f}mm/s | <span class="xai-tag">KI:</span> {l['age']}/{l['load']}/{l['therm']}<br>
-            <span class="xai-tag">PHYSIK:</span> {l['temp']:.1f}°C / {l['md']:.1f}Nm / {l['wear']:.1f}%<br>
-            <span class="xai-tag">VERLUST:</span> F:{l['f_loss']:.3f} | L:{l['a_loss']:.3f} | <span style="color:#f85149;">T:{l['t_loss']:.3f}</span>
+        html_entries += f"""
+        <div style="margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px; font-family: 'Courier New', monospace; font-size: 12px; color: #3fb950;">
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color:#58a6ff; font-weight:bold;">[{l['zeit']}] ZYK: {l['zyk']}</span>
+                <span style="color:{status_col}; font-weight:bold;">RISK: {l['risk']:.1%}</span>
+            </div>
+            <div style="margin-top:4px;">
+                <span style="color:#e3b341; font-weight:bold;">INTG:</span> {l['integ']:.2f}% | 
+                <span style="color:#e3b341; font-weight:bold;">VIB:</span> {l['vib']:.2f}mm/s | 
+                <span style="color:#e3b341; font-weight:bold;">XAI:</span> {l['age']}/{l['load']}/{l['therm']}
+            </div>
+            <div style="color: #8b949e; font-size: 11px; margin-top:2px;">
+                T: {l['temp']:.1f}°C | Md: {l['md']:.1f}Nm | W: {l['wear']:.1f}%
+            </div>
+            <div style="color: #6a737d; font-size: 10px; font-style: italic;">
+                LOSS_STRATEGY -> Fatigue: {l['f_loss']:.4f} | Load: {l['a_loss']:.4f} | <span style="color:#f85149;">Thermal: {l['t_loss']:.4f}</span>
+            </div>
         </div>
         """
-    st.markdown(f'<div class="terminal">{log_content}</div>', unsafe_allow_html=True)
+    
+    full_html = f"""
+    <div style="background: #010409; padding: 10px; border-radius: 8px; border: 1px solid #30363d; height: 500px; overflow-y: auto;">
+        {html_entries}
+    </div>
+    """
+    st.components.v1.html(full_html, height=520)
 
 st.divider()
 c1, c2 = st.columns(2)
