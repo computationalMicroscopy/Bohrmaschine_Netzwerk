@@ -137,7 +137,7 @@ if st.session_state.twin['active'] and not st.session_state.twin['broken']:
     log_data = {
         'zeit': zeit, 'zyk': s['cycle'], 'risk': s['risk'], 'integ': s['integrity'],
         'age': ["NEUWERTIG", "GEBRAUCHT", "ALT"][age_cat], 
-        'load': "ÜBERLAST" if load_cat else "NORMAL",
+        'load': "ÜBERLAST", 'load_status': load_cat,
         'therm': "KRITISCH" if s['t_current'] >= mat['temp_crit'] else "STABIL",
         'temp': s['t_current'], 'md': mc_raw, 'wear': s['wear'], 'vib': s['vib'],
         'f_loss': fatigue, 'a_loss': acute_damage, 't_loss': thermal_collapse
@@ -189,25 +189,26 @@ with col_protokoll:
     for l in st.session_state.twin['logs'][:15]:
         status_farbe = "#f85149" if l['risk'] > 0.6 else "#3fb950"
         html_eintraege += f"""
-        <div style="margin-bottom: 20px; border-bottom: 2px solid #222; padding-bottom: 12px; font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #e1e4e8;">
+        <div style="margin-bottom: 25px; border-bottom: 2px solid #333; padding-bottom: 15px; font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #e1e4e8;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
                 <b style="color:#58a6ff;">[{l['zeit']}] ZYKLUS: {l['zyk']}</b>
-                <b style="color:{status_farbe};">AUSFALLRISIKO: {l['risk']:.1%}</b>
+                <b style="color:{status_farbe};">GESAMT-RISIKO: {l['risk']:.1%}</b>
             </div>
-            <div style="margin-bottom: 4px;">
-                <span style="color:#e3b341; font-weight:bold;">INTEGRITÄT:</span> {l['integ']:.2f}% | 
-                <span style="color:#e3b341; font-weight:bold;">VIBRATION:</span> {l['vib']:.2f} mm/s
+            
+            <div style="background: rgba(255, 255, 255, 0.03); padding: 8px; border-radius: 4px; border-left: 3px solid #e3b341; margin-bottom: 8px;">
+                <b style="color:#e3b341; font-size: 11px; text-transform: uppercase;">KI-EVIDENZ (ENTSCHEIDUNGSGRUNDLAGE):</b><br>
+                <b>Werkzeugalter:</b> {l['age']} | <b>Lastzustand:</b> {"HOCH" if l['load_status'] else "NORMAL"} | <b>Thermischer Status:</b> {l['therm']}
             </div>
-            <div style="background: rgba(88, 166, 255, 0.1); padding: 6px; border-radius: 4px; border-left: 3px solid #58a6ff; margin-bottom: 6px;">
-                <b style="color:#58a6ff; font-size: 11px; text-transform: uppercase;">KI-EVIDENZ (URSACHENANALYSE):</b><br>
-                <b>Alter:</b> {l['age']} | <b>Last:</b> {l['load']} | <b>Thermik:</b> {l['therm']}
+
+            <div style="background: rgba(248, 81, 73, 0.05); padding: 8px; border-radius: 4px; border-left: 3px solid #f85149; margin-bottom: 8px;">
+                <b style="color:#f85149; font-size: 11px; text-transform: uppercase;">PHYSIKALISCHER SCHADENS-BREAKDOWN (ERKLÄRUNG):</b><br>
+                <div style="margin-top:4px;">• <b>Material-Ermüdung:</b> {l['f_loss']:.4f} <span style="color:#8b949e; font-size:11px;">(Verschleißbedingter Substanzverlust)</span></div>
+                <div>• <b>Akuter Last-Schaden:</b> {l['a_loss']:.4f} <span style="color:#8b949e; font-size:11px;">(Mechanische Überbeanspruchung)</span></div>
+                <div>• <b>Thermischer Kollaps:</b> <span style="color:#f85149;">{l['t_loss']:.4f}</span> <span style="color:#8b949e; font-size:11px;">(Gefügeverlust durch Hitze-Exzesse)</span></div>
             </div>
-            <div style="color: #8b949e; font-size: 12px; margin-bottom: 6px;">
-                <b>SENSORIK-ROHDATEN:</b> {l['temp']:.1f}°C | Drehmoment: {l['md']:.1f}Nm | Verschleiß: {l['wear']:.1f}%
-            </div>
-            <div style="color: #6a737d; font-size: 11px;">
-                <b>PHYSIKALISCHER SCHADENS-BREAKDOWN:</b><br>
-                Ermüdung: {l['f_loss']:.4f} | Last-Peak: {l['a_loss']:.4f} | <span style="color:#f85149;">Thermischer Kollaps: {l['t_loss']:.4f}</span>
+
+            <div style="color: #8b949e; font-size: 12px; padding: 4px;">
+                <b>SENSORIK:</b> {l['temp']:.1f}°C | Vibration: {l['vib']:.2f} mm/s | Drehmoment: {l['md']:.1f} Nm
             </div>
         </div>
         """
