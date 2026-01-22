@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # --- 1. SETUP & DESIGN ---
-st.set_page_config(layout="wide", page_title="KI-Bohrsystem v3.5 Pro", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI-Bohrsystem v3.6 Pro", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -40,7 +40,6 @@ st.markdown("""
 @st.cache_resource
 def get_engine():
     model = BayesianNetwork([('Age', 'State'), ('Load', 'State'), ('Therm', 'State'), ('Cool', 'State')])
-    # CPD Definitionen (Bayesian Logic)
     cpd_age = TabularCPD('Age', 3, [[0.33], [0.33], [0.34]])
     cpd_load = TabularCPD('Load', 2, [[0.8], [0.2]])
     cpd_therm = TabularCPD('Therm', 2, [[0.9], [0.1]])
@@ -51,7 +50,10 @@ def get_engine():
             for therm in range(2):
                 for cool in range(2):
                     score = (age * 2) + (load * 4) + (therm * 7) + (cool * 8)
-                    v = [0.99, 0.005, 0.005] if score <= 3 else ([0.6, 0.35, 0.05] if score <= 8 else ([0.15, 0.45, 0.4] if score <= 12 else [0.01, 0.04, 0.95]))
+                    if score <= 3: v = [0.99, 0.005, 0.005]
+                    elif score <= 8: v = [0.60, 0.35, 0.05]
+                    elif score <= 12: v = [0.15, 0.45, 0.40]
+                    else: v = [0.01, 0.04, 0.95]
                     z_matrix.append(v)
     cpd_state = TabularCPD('State', 3, np.array(z_matrix).T, ['Age', 'Load', 'Therm', 'Cool'], [3, 2, 2, 2])
     model.add_cpds(cpd_age, cpd_load, cpd_therm, cpd_cool, cpd_state)
@@ -88,23 +90,19 @@ with st.sidebar:
     sens_vib = st.slider("Vibrations-Gain", 0.1, 5.0, 1.0)
     sim_speed = st.select_slider("Abtastrate (ms)", options=[200, 100, 50, 10, 0], value=50)
 
-# --- 5. LOGIK (Digitaler Zwilling) ---
+# --- 5. LOGIK ---
 engine = get_engine()
 s = st.session_state.twin
 
 if s['active'] and not s['broken']:
     s['cycle'] += 1
-    # Physik-Simulation
     fc = mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2)
     md_val = (fc * d) / 2000
     s['wear'] += ((mat['wear_rate'] * (vc ** 1.8) * f) / (15000 if cooling else 300))
     target_t = 22 + (s['wear'] * 1.5) + (vc * 0.2) + (0 if cooling else 250)
     s['t_current'] += (target_t - s['t_current']) * 0.2 + s['seed'].normal(0, 0.5)
-    
-    # Sensorik (Vibrationen)
     vib = (((0.01 + (s['wear'] * 0.005)) * 10) + s['seed'].normal(0, 0.05)) * sens_vib
     
-    # KI-Inferenz
     a, l, t, c = categorize(s['cycle'], s['wear'], s['t_current'], md_val, mat['temp_crit'], cooling, 1.0)
     s['risk'] = engine.query(['State'], evidence={'Age': a, 'Load': l, 'Therm': t, 'Cool': c}).values[2]
     
@@ -112,57 +110,55 @@ if s['active'] and not s['broken']:
     s['history'].append({'c': s['cycle'], 'r': s['risk'], 'w': s['wear'], 't': s['t_current'], 'md': md_val, 'v': vib})
 
 # --- 6. UI LAYOUT ---
-st.title("🗜️ PROZESS-MONITOR | Digitaler Zwilling v3.5")
+st.title("🗜️ PROZESS-MONITOR | Digitaler Zwilling v3.6")
 
 col_left, col_mid, col_right = st.columns([1, 2, 1])
 
 with col_left:
-    st.markdown("### 📊 Sensor-Daten")
+    st.markdown("### 📊 Sensor-Werte")
     st.markdown(f'<div class="glass-card"><span class="val-title">Bruchrisiko</span><br><span class="val-main {"red-glow" if s["risk"]>0.5 else "blue-glow"}">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{s["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="glass-card"><span class="val-title">Verschleiß</span><br><span class="val-main" style="color:#e3b341">{s["wear"]:.1f} %</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main red-glow">{s["t_current"]:.1f} °C</span></div>', unsafe_allow_html=True)
 
 with col_mid:
     st.markdown("### 📈 Live-Oszilloskop")
     if len(s['history']) > 0:
-        df = pd.DataFrame(s['history']).suffix_label = "Zyklen"
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, subplot_titles=("Risiko & Verschleiß", "Sensorik: Vibration & Moment"))
+        df = pd.DataFrame(s['history']) # FIX: Hier war der Fehler!
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
         fig.add_trace(go.Scatter(x=df['c'], y=df['r']*100, name="Risiko %", fill='tozeroy', line=dict(color='#f85149')), row=1, col=1)
         fig.add_trace(go.Scatter(x=df['c'], y=df['w'], name="Verschleiß %", line=dict(color='#e3b341')), row=1, col=1)
         fig.add_trace(go.Scatter(x=df['c'], y=df['v'], name="Vibration [g]", line=dict(color='#bc8cff')), row=2, col=1)
         fig.add_trace(go.Scatter(x=df['c'], y=df['md'], name="Moment [Nm]", line=dict(color='#58a6ff')), row=2, col=1)
-        fig.update_layout(height=450, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=30, b=0))
+        fig.update_layout(height=450, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0), showlegend=True)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Simulation starten, um Sensor-Feeds zu empfangen...")
+        st.info("Simulation starten für Live-Daten...")
 
 with col_right:
-    st.markdown("### 🧪 Strategie-Planer")
+    st.markdown("### 🧪 Was-Wäre-Wenn")
     st.markdown('<div class="sandbox-card">', unsafe_allow_html=True)
     h_vc = st.slider("Plan: vc", 20, 500, vc)
+    h_f = st.slider("Plan: f", 0.02, 1.0, f)
     h_cool = st.toggle("Plan: Kühlung", value=cooling)
     
-    # What-If Berechnung
-    h_md = (mat['kc1.1'] * (f ** (1 - mat['mc'])) * (d / 2) * d) / 2000
+    h_md = (mat['kc1.1'] * (h_f ** (1 - mat['mc'])) * (d / 2) * d) / 2000
     h_t = 22 + (s['wear'] * 1.5) + (h_vc * 0.2) + (0 if h_cool else 250)
     ha, hl, ht, hc = categorize(s['cycle'], s['wear'], h_t, h_md, mat['temp_crit'], h_cool, 1.0)
     h_risk = engine.query(['State'], evidence={'Age': ha, 'Load': hl, 'Therm': ht, 'Cool': hc}).values[2]
     
     st.metric("Projiziertes Risiko", f"{h_risk:.1%}", delta=f"{h_risk - s['risk']:.1%}", delta_color="inverse")
     
-    st.markdown("**Ursachen-Analyse (XAI):**")
+    st.markdown("**KI-Begründung (XAI):**")
     for lbl, v, clr in [("Alter", ha/2, "#58a6ff"), ("Last", hl, "#e3b341"), ("Hitze", ht, "#f85149")]:
         st.markdown(f'<div style="font-size:11px">{lbl}</div><div class="xai-bar-bg"><div class="xai-bar-fill" style="width:{v*100}%; background:{clr}"></div></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- FOOTER ---
 st.divider()
-c1, c2, c3 = st.columns([1,1,2])
+c1, c2 = st.columns(2)
 if c1.button("▶ START / STOPP", use_container_width=True): s['active'] = not s['active']
 if c2.button("🔄 RESET", use_container_width=True):
     st.session_state.twin = {'cycle': 0, 'wear': 0.0, 'history': [], 'active': False, 'broken': False, 't_current': 22.0, 'seed': np.random.RandomState(42), 'risk': 0.0}
     st.rerun()
-if s['broken']: st.error("🚨 WERKZEUGBRUCH DETEKTIERT! System gestoppt.")
 
 if s['active']:
     time.sleep(sim_speed / 1000); st.rerun()
