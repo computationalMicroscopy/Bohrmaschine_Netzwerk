@@ -22,7 +22,7 @@ st.markdown("""
     .val-title { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.2px; }
     .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 800; }
     
-    /* XAI Monitor Styling - Erweitert */
+    /* XAI Monitor - Experten-Modus */
     .xai-container { height: 650px; overflow-y: auto; padding-right: 10px; }
     .xai-card {
         background: rgba(30, 35, 45, 0.9); border-left: 5px solid #e3b341;
@@ -32,10 +32,11 @@ st.markdown("""
     .xai-feature-row { display: flex; justify-content: space-between; font-size: 0.75rem; color: #8b949e; }
     .xai-bar-bg { background: #1b1f23; height: 6px; width: 100%; border-radius: 3px; margin: 4px 0 8px 0; }
     .xai-bar-fill { background: linear-gradient(90deg, #e3b341, #f85149); height: 6px; border-radius: 3px; }
-    .reason-text { color: #ffffff; font-size: 0.9rem; margin-top: 10px; font-weight: 600; }
-    .maint-text { color: #8b949e; font-size: 0.8rem; margin-top: 8px; border-left: 2px solid #58a6ff; padding-left: 10px; font-family: monospace; }
+    .reason-text { color: #ffffff; font-size: 0.95rem; margin-top: 10px; font-weight: 600; }
+    .sensor-snapshot { font-size: 0.75rem; color: #3fb950; margin-top: 5px; font-family: monospace; }
+    .maint-text { color: #8b949e; font-size: 0.8rem; margin-top: 8px; border-left: 2px solid #58a6ff; padding-left: 10px; }
     .action-text { color: #58a6ff; font-weight: bold; font-size: 0.85rem; margin-top: 6px; border-top: 1px solid #30363d; padding-top: 6px; }
-    .diag-code { background: #e3b341; color: #000; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 900; }
+    .diag-badge { background: #e3b341; color: #000; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 900; }
     
     .emergency-alert {
         background: #f85149; color: white; padding: 15px; border-radius: 8px; 
@@ -46,49 +47,48 @@ st.markdown("""
 
 st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow_html=True)
 
-# --- 2. LOGIK-FUNKTIONEN (ERWEITERT UM INSTANDHALTUNG) ---
-def get_detailed_analysis(top_reason):
+# --- 2. LOGIK-FUNKTIONEN (DETAILLIERTER XAI) ---
+def get_expert_analysis(top_reason, current_vals):
     mapping = {
         "Material-Ermüdung": {
-            "diag": "ERR-MT-01", "exp": "Strukturelle Gefügeschädigung (Wöhler-Grenzbereich).", 
-            "maint": "Protokoll: Werkzeugwechsel veranlassen. Prüfung der Spindel-Laufzeit erforderlich.",
+            "diag": "DIAGNOSE-MATERIALGEFÜGE", "exp": "Strukturelle Gefügeschädigung durch kumulierte Lastzyklen.", 
+            "maint": "Instandhaltung: Werkzeugwechsel veranlassen. Spindellaufzeit und Werkzeugstandmenge protokollieren.",
             "act": "Präventiver Austausch zur Sicherung der Maßhaltigkeit."
         },
         "Überlastung": {
-            "diag": "ERR-LOAD-05", "exp": "Torsionsspannung überschreitet Elastizitätsgrenze.", 
-            "maint": "Protokoll: Vorschub f reduzieren. Prüfung der Drehmomentstütze und Spannfutter-Greifkraft.",
+            "diag": "DIAGNOSE-MECHANIK", "exp": "Mechanische Spannung überschreitet kritische Elastizitätsgrenze.", 
+            "maint": "Instandhaltung: Vorschubrate f reduzieren. Stabilität der Werkzeugspannung prüfen.",
             "act": "Vorschubrate f um 15% senken."
         },
         "Gefüge-Überhitzung": {
-            "diag": "ERR-THERM-09", "exp": "Thermische Diffusionsvorgänge (Anlasseffekt).", 
-            "maint": "Protokoll: KSS-Konzentration und Durchflussmenge prüfen. Fokus auf Wärmeabfuhr.",
-            "act": "Schnittgeschwindigkeit vc senken oder KSS-Druck erhöhen."
+            "diag": "DIAGNOSE-THERMIK", "exp": "Thermische Erweichung der Schneidkante durch Diffusionsvorgänge.", 
+            "maint": "Instandhaltung: Kühlung-Durchflussmenge und Temperatur prüfen.",
+            "act": "Schnittgeschwindigkeit vc senken oder Kühlungs-Druck erhöhen."
         },
         "Resonanz-Instabilität": {
-            "diag": "ERR-VIB-12", "exp": "Harmonische Schwingungsamplituden induzieren Zerrüttung.", 
-            "maint": "Protokoll: Prüfung der Werkzeugauskraglänge und Spindellager-Zustand (FFT-Analyse).",
-            "act": "Drehzahlbereich um +/- 5% verschieben."
+            "diag": "DIAGNOSE-DYNAMIK", "exp": "Harmonische Schwingungsamplituden schädigen das Hartmetallgefüge.", 
+            "maint": "Instandhaltung: Prüfung der Werkzeugauskraglänge und Spindellager-Zustand.",
+            "act": "Drehzahlbereich zur Resonanzvermeidung verschieben."
         },
         "Kühlungs-Defizit": {
-            "diag": "ERR-TRIB-03", "exp": "Tribologisches Systemversagen (Schmierfilmabriss).", 
-            "maint": "Protokoll: Düsenposition kontrollieren. Spannut auf Spänestau untersuchen.",
-            "act": "KSS-Volumenstrom und Ausrichtung kontrollieren."
+            "diag": "DIAGNOSE-TRIBOLOGIE", "exp": "Schmierfilmabriss führt zu extremer Reibung in der Kontaktzone.", 
+            "maint": "Instandhaltung: Düsenposition kontrollieren. Kühlungs-Füllstand prüfen.",
+            "act": "Kühlungs-Volumenstrom und Ausrichtung sofort kontrollieren."
         },
         "Struktur-Vorschaden": {
-            "diag": "ERR-CRIT-99", "exp": "Lokale Instabilität durch detektierte Mikrorisse.", 
-            "maint": "Protokoll: SOFORT-STOPP empfohlen. Bruchanalyse der Schneide durchführen.",
-            "act": "Vorsicht: Akute Gefahr des spröden Gewaltbruchs!"
+            "diag": "DIAGNOSE-INTEGRITÄT", "exp": "Akute Instabilität durch detektierte Mikrorisse im Bohrerkern.", 
+            "maint": "Instandhaltung: Sofortiger Stopp. Werkzeug auf Sprödbruch untersuchen.",
+            "act": "Vorsicht: Höchste Gefahr des spontanen Werkzeugbruchs!"
         }
     }
-    return mapping.get(top_reason, {
-        "diag": "SYS-OK", "exp": "Prozessparameter stabil.", 
-        "maint": "Protokoll: Routineüberwachung aktiv. Keine Auffälligkeiten.",
-        "act": "Keine Korrektur erforderlich."
-    })
+    base = mapping.get(top_reason, {"diag": "SYSTEM-NORMAL", "exp": "Prozess stabil.", "maint": "Routineüberwachung.", "act": "Keine Korrektur erforderlich."})
+    # Ergänzung des Sensor-Snapshots
+    base["snapshot"] = f"SENSOR-DATEN: {current_vals['t']:.1f}°C | {current_vals['v']:.2f} Vib | {current_vals['d']:.1f} Nm"
+    return base
 
-def calculate_metrics(alter, last, thermik, vibration, kss_ausfall, integritaet):
+def calculate_metrics(alter, last, thermik, vibration, kuehlung_ausfall, integritaet):
     w = [1.2, 2.4, 3.8, 3.0, 4.5, 0.10]
-    raw_scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kss_ausfall * w[4], (100 - integritaet) * w[5]]
+    raw_scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kuehlung_ausfall * w[4], (100 - integritaet) * w[5]]
     z = sum(raw_scores)
     risk = 1 / (1 + np.exp(-(z - 9.5)))
     labels = ["Material-Ermüdung", "Überlastung", "Gefüge-Überhitzung", "Resonanz-Instabilität", "Kühlungs-Defizit", "Struktur-Vorschaden"]
@@ -117,13 +117,13 @@ with st.sidebar:
     vc = st.slider("vc [m/min]", 20, 600, 180)
     f = st.slider("f [mm/U]", 0.01, 1.2, 0.2)
     d = st.number_input("Ø [mm]", 1.0, 100.0, 12.0)
-    kss = st.toggle("KSS aktiv", value=True)
+    kuehlung = st.toggle("Kühlung aktiv", value=True)
     st.divider()
-    st.header("📡 Sensoren")
+    st.header("📡 Sensor-Feineinstellung")
     sens_vibr = st.slider("Vibrations-Gain", 0.1, 5.0, 1.0)
     sens_load = st.slider("Last-Gain", 0.1, 5.0, 1.0)
     st.divider()
-    zyklus_sprung = st.number_input("Schrittweite", 1, 100, 10)
+    zyklus_sprung = st.number_input("Schrittweite [Zyklen]", 1, 100, 10)
     sim_takt = st.select_slider("Takt (ms)", options=[500, 200, 100, 50, 0], value=100)
 
 # --- 5. PHYSIK-ENGINE ---
@@ -131,14 +131,14 @@ s = st.session_state.twin
 if s['active'] and not s['broken']:
     s['zyklus'] += zyklus_sprung
     s['drehmoment'] = ((m['kc1.1'] * (f ** -m['mc']) * f * (d/2)**2) / 1000) * sens_load
-    s['verschleiss'] += ((m['rate'] * (vc**1.7) * f) / (12000 if kss else 300)) * zyklus_sprung
-    s['thermik'] += ((22 + (s['verschleiss']*1.4) + (vc*0.22) + (0 if kss else 280)) - s['thermik']) * 0.25
+    s['verschleiss'] += ((m['rate'] * (vc**1.7) * f) / (12000 if kuehlung else 300)) * zyklus_sprung
+    s['thermik'] += ((22 + (s['verschleiss']*1.4) + (vc*0.22) + (0 if kuehlung else 280)) - s['thermik']) * 0.25
     s['vibration'] = ((s['verschleiss']*0.08 + vc*0.015 + s['drehmoment']*0.05) * sens_vibr) + s['seed'].normal(0, 0.2)
-    s['risk'], evidenz_list, s['rul'] = calculate_metrics(s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration']/10, 1.0 if not kss else 0.0, s['integritaet'])
+    s['risk'], evidenz_list, s['rul'] = calculate_metrics(s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration']/10, 1.0 if not kuehlung else 0.0, s['integritaet'])
     s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (max(0,s['vibration'])/20)*0.05) * zyklus_sprung
     if s['integritaet'] <= 0: s['broken'], s['active'], s['integritaet'] = True, False, 0
-    analysis = get_detailed_analysis(evidenz_list[0][0])
-    s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'analysis': analysis, 'evidenz': evidenz_list})
+    expert_info = get_expert_analysis(evidenz_list[0][0], {'t': s['thermik'], 'v': s['vibration'], 'd': s['drehmoment']})
+    s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': expert_info, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
 
 # --- 6. UI HEADER ---
@@ -169,20 +169,21 @@ with tab1:
             st.plotly_chart(fig, use_container_width=True)
     
     with col_r:
-        st.markdown("### 🧠 Deep XAI: Kausalanalyse & Instandhaltung")
+        st.markdown("### 🧠 Deep XAI: Experten-Protokoll")
         xai_html = '<div class="xai-container">'
-        for l in s['logs'][:10]:
+        for l in s['logs'][:12]:
             features = "".join([f'<div class="xai-feature-row"><span>{e[0]}</span><span>{e[1]:.1f}%</span></div><div class="xai-bar-bg"><div class="xai-bar-fill" style="width:{e[1]}%"></div></div>' for e in l['evidenz'][:3]])
             xai_html += f"""
             <div class="xai-card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span class="diag-code">{l['analysis']['diag']}</span>
-                    <b style="font-size:11px; color:#8b949e;">LOG {l['zeit']} | RISIKO: {l['risk']:.1%}</b>
+                    <span class="diag-badge">{l['info']['diag']}</span>
+                    <b style="font-size:11px; color:#8b949e;">ZEIT: {l['zeit']} | KONFIDENZ: {max([e[1] for e in l['evidenz']]):.1f}%</b>
                 </div>
-                <div class="reason-text">{l['analysis']['exp']}</div>
+                <div class="reason-text">{l['info']['exp']}</div>
+                <div class="sensor-snapshot">{l['info']['snapshot']}</div>
                 <div style="margin-top:10px;">{features}</div>
-                <div class="maint-text">{l['analysis']['maint']}</div>
-                <div class="action-text">Maßnahme: {l['analysis']['act']}</div>
+                <div class="maint-text">{l['info']['maint']}</div>
+                <div class="action-text">HANDLUNGSANWEISUNG: {l['info']['act']}</div>
             </div>"""
         xai_html += '</div>'
         st.markdown(xai_html, unsafe_allow_html=True)
@@ -191,19 +192,19 @@ with tab2:
     st.header("🧪 Was-Wäre-Wenn Labor")
     sc1, sc2, sc3 = st.columns([1, 1, 2])
     with sc1:
-        sim_alter = st.slider("Sim. Alter [Zyklen]", 0, 3000, 500)
-        sim_last = st.slider("Sim. Last [Nm]", 0, 300, 40)
-        sim_vibr = st.slider("Sim. Vibration", 0.0, 30.0, 2.0)
+        sim_alter = st.slider("Simuliertes Alter [Zyklen]", 0, 3000, 500)
+        sim_last = st.slider("Simulierte Last [Nm]", 0, 300, 40)
+        sim_vibr = st.slider("Simulierte Vibration", 0.0, 30.0, 2.0)
     with sc2:
-        sim_temp = st.slider("Sim. Hitze [°C]", 20, 1200, 150)
+        sim_temp = st.slider("Simulierte Hitze [°C]", 20, 1200, 150)
         sim_integ = st.slider("Integrität [%]", 0, 100, 100)
-        sim_kss = st.toggle("Sim. KSS-Ausfall")
+        sim_kuehl = st.toggle("Simulierter Kühlungs-Ausfall")
     with sc3:
-        r_sim, evidenz_sim, rul_sim = calculate_metrics(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 1.0 if sim_kss else 0.0, sim_integ)
-        fig_radar = go.Figure(data=go.Scatterpolar(r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*3, (100 if sim_kss else 0)], theta=['Alter','Last','Hitze','Vibration','KSS'], fill='toself', line=dict(color='#e3b341')))
+        r_sim, evidenz_sim, rul_sim = calculate_metrics(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/5, 1.0 if sim_kuehl else 0.0, sim_integ)
+        fig_radar = go.Figure(data=go.Scatterpolar(r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*3, (100 if sim_kuehl else 0)], theta=['Alter','Last','Hitze','Vibration','Kühlung'], fill='toself', line=dict(color='#e3b341')))
         fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 100])), showlegend=False, height=300, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_radar, use_container_width=True)
-        st.markdown(f'<div class="glass-card" style="text-align:center;"><b>PROGNOSE</b><h1>{rul_sim} Z.</h1></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="glass-card" style="text-align:center;"><b>PROGNOSE</b><h1>{rul_sim} Zyklen</h1></div>', unsafe_allow_html=True)
 
 st.divider()
 c1, c2 = st.columns(2)
