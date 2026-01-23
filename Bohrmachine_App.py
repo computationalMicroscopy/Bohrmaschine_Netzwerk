@@ -22,7 +22,7 @@ st.markdown("""
     .val-title { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.2px; }
     .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 800; }
     
-    /* XAI Monitor - Experten-Modus */
+    /* XAI Monitor - Ultra Detail Modus */
     .xai-container { height: 650px; overflow-y: auto; padding-right: 10px; }
     .xai-card {
         background: rgba(30, 35, 45, 0.9); border-left: 5px solid #e3b341;
@@ -32,10 +32,12 @@ st.markdown("""
     .xai-feature-row { display: flex; justify-content: space-between; font-size: 0.75rem; color: #8b949e; }
     .xai-bar-bg { background: #1b1f23; height: 6px; width: 100%; border-radius: 3px; margin: 4px 0 8px 0; }
     .xai-bar-fill { background: linear-gradient(90deg, #e3b341, #f85149); height: 6px; border-radius: 3px; }
-    .reason-text { color: #ffffff; font-size: 0.95rem; margin-top: 10px; font-weight: 600; }
-    .sensor-snapshot { font-size: 0.75rem; color: #3fb950; margin-top: 5px; font-family: monospace; }
-    .maint-text { color: #8b949e; font-size: 0.8rem; margin-top: 8px; border-left: 2px solid #58a6ff; padding-left: 10px; }
-    .action-text { color: #58a6ff; font-weight: bold; font-size: 0.85rem; margin-top: 6px; border-top: 1px solid #30363d; padding-top: 6px; }
+    .reason-text { color: #ffffff; font-size: 0.95rem; margin-top: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;}
+    .sensor-snapshot { font-size: 0.75rem; color: #3fb950; margin-top: 5px; font-family: monospace; border-bottom: 1px solid #30363d; padding-bottom: 5px;}
+    .maint-block { margin-top: 10px; padding: 8px; background: rgba(88, 166, 255, 0.05); border-radius: 4px; }
+    .maint-title { font-size: 0.7rem; color: #58a6ff; font-weight: bold; text-transform: uppercase; }
+    .maint-text { color: #c9d1d9; font-size: 0.82rem; line-height: 1.4; margin-bottom: 5px;}
+    .action-text { color: #f85149; font-weight: bold; font-size: 0.85rem; margin-top: 8px; border-top: 1px solid #30363d; padding-top: 8px; }
     .diag-badge { background: #e3b341; color: #000; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 900; }
     
     .emergency-alert {
@@ -47,43 +49,53 @@ st.markdown("""
 
 st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow_html=True)
 
-# --- 2. LOGIK-FUNKTIONEN (DETAILLIERTER XAI) ---
+# --- 2. LOGIK-FUNKTIONEN (MAXIMALER DETAILGRAD) ---
 def get_expert_analysis(top_reason, current_vals):
     mapping = {
         "Material-Ermüdung": {
-            "diag": "DIAGNOSE-MATERIALGEFÜGE", "exp": "Strukturelle Gefügeschädigung durch kumulierte Lastzyklen.", 
-            "maint": "Instandhaltung: Werkzeugwechsel veranlassen. Spindellaufzeit und Werkzeugstandmenge protokollieren.",
-            "act": "Präventiver Austausch zur Sicherung der Maßhaltigkeit."
+            "diag": "DIAGNOSE: ADHÄSIVER VERSCHLEISS & ERMÜDUNG",
+            "exp": "Degradation der Schneidkantenstabilität durch zyklische Wechselbelastung.", 
+            "maint": "Prüfen Sie die Freifläche auf Verschleißmarkenbreite (>0.2mm). Dokumentieren Sie die Anzahl der Bohrungen für die Standzeit-Statistik. Prüfen Sie, ob Mikroausbrüche (Chipping) vorliegen.",
+            "act": "WERKZEUGWECHSEL: Werkzeug hat das Ende der wirtschaftlichen Standzeit erreicht. Bei vorzeitigem Auftreten: Schnittgeschwindigkeit um 10% reduzieren."
         },
         "Überlastung": {
-            "diag": "DIAGNOSE-MECHANIK", "exp": "Mechanische Spannung überschreitet kritische Elastizitätsgrenze.", 
-            "maint": "Instandhaltung: Vorschubrate f reduzieren. Stabilität der Werkzeugspannung prüfen.",
-            "act": "Vorschubrate f um 15% senken."
+            "diag": "DIAGNOSE: MECHANISCHE ÜBERBEANSPRUCHUNG",
+            "exp": "Torsions- und Druckkräfte liegen außerhalb des Sicherheitsfensters für diesen Bohrerdurchmesser.", 
+            "maint": "Kontrolle der Spannmittel auf Rundlauffehler (<0.02mm). Prüfen Sie das Drehmomentprotokoll der Spindel. Untersuchen Sie die Spannut auf Spänestau (Verstopfungsgefahr).",
+            "act": "PROZESSKORREKTUR: Reduzieren Sie den Vorschub f pro Umdrehung sofort. Prüfen Sie die Spanbruchgeometrie – Späne müssen kürzer werden."
         },
         "Gefüge-Überhitzung": {
-            "diag": "DIAGNOSE-THERMIK", "exp": "Thermische Erweichung der Schneidkante durch Diffusionsvorgänge.", 
-            "maint": "Instandhaltung: Kühlung-Durchflussmenge und Temperatur prüfen.",
-            "act": "Schnittgeschwindigkeit vc senken oder Kühlungs-Druck erhöhen."
+            "diag": "DIAGNOSE: THERMISCHE ÜBERLASTUNG",
+            "exp": "Die Temperatur in der Wirkzone destabilisiert die AlTiN-Beschichtung und den Hartmetall-Binder.", 
+            "maint": "Prüfen Sie die Farbe der Späne (Anlauffarben). Messen Sie die Temperatur der Kühlflüssigkeit im Rücklauf. Testen Sie die Konzentration der Kühlung (Refraktometer-Prüfung).",
+            "act": "KÜHLUNGS-CHECK: Durchflussmenge erhöhen. Falls nicht möglich: Schnittgeschwindigkeit vc senken, um die Reibungswärme zu minimieren."
         },
         "Resonanz-Instabilität": {
-            "diag": "DIAGNOSE-DYNAMIK", "exp": "Harmonische Schwingungsamplituden schädigen das Hartmetallgefüge.", 
-            "maint": "Instandhaltung: Prüfung der Werkzeugauskraglänge und Spindellager-Zustand.",
-            "act": "Drehzahlbereich zur Resonanzvermeidung verschieben."
+            "diag": "DIAGNOSE: DYNAMISCHE INSTABILITÄT (VIBRATION)",
+            "exp": "Selbsterregte Schwingungen führen zu unkontrollierten Stoßbelastungen der Schneide.", 
+            "maint": "Prüfen Sie die Werkzeugauskraglänge (so kurz wie möglich spannen). Checken Sie die Spindellagerung auf Spiel. FFT-Analyse des Vibrationssensors zeigt Spitzen im kritischen Bereich.",
+            "act": "FREQUENZ-OPTIMIERUNG: Ändern Sie die Drehzahl um ca. 50-100 U/min nach oben oder unten, um den Resonanzpunkt zu verlassen."
         },
         "Kühlungs-Defizit": {
-            "diag": "DIAGNOSE-TRIBOLOGIE", "exp": "Schmierfilmabriss führt zu extremer Reibung in der Kontaktzone.", 
-            "maint": "Instandhaltung: Düsenposition kontrollieren. Kühlungs-Füllstand prüfen.",
-            "act": "Kühlungs-Volumenstrom und Ausrichtung sofort kontrollieren."
+            "diag": "DIAGNOSE: TRIBOLOGISCHES VERSAGEN",
+            "exp": "Kritischer Schmierfilmabriss führt zu Aufbauschneidenbildung und Materialverschweißung.", 
+            "maint": "Sofortige Prüfung der Kühlmitteldüsen auf Verstopfung. Prüfen Sie den Pumpendruck am Manometer. Sicherstellen, dass der Strahl direkt in die Spannut zielt.",
+            "act": "NOTFALL-STOPP GEFAHR: Stellen Sie eine kontinuierliche Versorgung mit Kühlung sicher. Reinigen Sie die internen Kühlkanäle des Bohrers."
         },
         "Struktur-Vorschaden": {
-            "diag": "DIAGNOSE-INTEGRITÄT", "exp": "Akute Instabilität durch detektierte Mikrorisse im Bohrerkern.", 
-            "maint": "Instandhaltung: Sofortiger Stopp. Werkzeug auf Sprödbruch untersuchen.",
-            "act": "Vorsicht: Höchste Gefahr des spontanen Werkzeugbruchs!"
+            "diag": "DIAGNOSE: KRITISCHER GEFÜGESCHADEN / RISSBILDUNG",
+            "exp": "Interkristalline Risse im Kernbereich detektiert. Die strukturelle Stabilität ist nicht mehr gegeben.", 
+            "maint": "Das Werkzeug darf nicht nachgeschliffen werden, da Risse tief in den Schaft ragen können. Dokumentieren Sie den Schadensverlauf für das Qualitätsmanagement.",
+            "act": "SOFORT-AUSSTRAG: Werkzeugbruch steht unmittelbar bevor. Prozess sofort stoppen und Werkzeug entsorgen, um Folgeschäden an Bauteil und Spindel zu vermeiden."
         }
     }
-    base = mapping.get(top_reason, {"diag": "SYSTEM-NORMAL", "exp": "Prozess stabil.", "maint": "Routineüberwachung.", "act": "Keine Korrektur erforderlich."})
-    # Ergänzung des Sensor-Snapshots
-    base["snapshot"] = f"SENSOR-DATEN: {current_vals['t']:.1f}°C | {current_vals['v']:.2f} Vib | {current_vals['d']:.1f} Nm"
+    base = mapping.get(top_reason, {
+        "diag": "DIAGNOSE: PROZESS STABIL", 
+        "exp": "Alle Parameter befinden sich innerhalb der berechneten Standardabweichung.", 
+        "maint": "Routine-Kontrolle der Kühlungskonzentration und der Werkzeugverschleißmarken beim nächsten regulären Stopp.",
+        "act": "Keine manuellen Eingriffe erforderlich. Prozess wird im Automatikmodus fortgesetzt."
+    })
+    base["snapshot"] = f"ECHTZEIT-WERTE: {current_vals['t']:.1f}°C | {current_vals['v']:.2f} G-Last (Vibration) | {current_vals['d']:.1f} Nm Drehmoment"
     return base
 
 def calculate_metrics(alter, last, thermik, vibration, kuehlung_ausfall, integritaet):
@@ -169,20 +181,23 @@ with tab1:
             st.plotly_chart(fig, use_container_width=True)
     
     with col_r:
-        st.markdown("### 🧠 Deep XAI: Experten-Protokoll")
+        st.markdown("### 🧠 Deep XAI: Experten-Diagnosezentrum")
         xai_html = '<div class="xai-container">'
-        for l in s['logs'][:12]:
+        for l in s['logs'][:15]:
             features = "".join([f'<div class="xai-feature-row"><span>{e[0]}</span><span>{e[1]:.1f}%</span></div><div class="xai-bar-bg"><div class="xai-bar-fill" style="width:{e[1]}%"></div></div>' for e in l['evidenz'][:3]])
             xai_html += f"""
             <div class="xai-card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                     <span class="diag-badge">{l['info']['diag']}</span>
-                    <b style="font-size:11px; color:#8b949e;">ZEIT: {l['zeit']} | KONFIDENZ: {max([e[1] for e in l['evidenz']]):.1f}%</b>
+                    <b style="font-size:11px; color:#8b949e;">LOG {l['zeit']} | KI-SICHERHEIT: {max([e[1] for e in l['evidenz']]):.1f}%</b>
                 </div>
                 <div class="reason-text">{l['info']['exp']}</div>
                 <div class="sensor-snapshot">{l['info']['snapshot']}</div>
                 <div style="margin-top:10px;">{features}</div>
-                <div class="maint-text">{l['info']['maint']}</div>
+                <div class="maint-block">
+                    <div class="maint-title">Prüfprotokoll & Instandhaltung:</div>
+                    <div class="maint-text">{l['info']['maint']}</div>
+                </div>
                 <div class="action-text">HANDLUNGSANWEISUNG: {l['info']['act']}</div>
             </div>"""
         xai_html += '</div>'
