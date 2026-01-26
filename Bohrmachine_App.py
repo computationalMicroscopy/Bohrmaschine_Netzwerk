@@ -168,7 +168,7 @@ with tab1:
     with col_l:
         if s['history']:
             df = pd.DataFrame(s['history'])
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Hitze & Vibration (mm/s)", "KI: Bruchrisiko %"))
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Temperatur & Vibration (mm/s)", "KI: Bruchrisiko %"))
             fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', line=dict(color='#3fb950', width=3)), 1, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['t'], line=dict(color='#f85149')), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['v'], line=dict(color='#bc8cff')), 2, 1)
@@ -207,7 +207,7 @@ with tab2:
         sim_last = st.slider("Sim. Last [Nm]", 0, 300, 40)
         sim_vibr = st.slider("Sim. Vibration [mm/s]", 0.0, 50.0, 5.0)
     with sc2:
-        sim_temp = st.slider("Sim. Hitze [°C]", 20, 1200, 150)
+        sim_temp = st.slider("Sim. Temp. [°C]", 20, 1200, 150)
         sim_integ = st.slider("Integrität [%]", 0, 100, 100)
         sim_kuehl = st.toggle("Sim. Kühlungs-Ausfall")
     with sc3:
