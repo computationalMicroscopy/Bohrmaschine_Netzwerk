@@ -49,7 +49,7 @@ st.markdown("""
 
 st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow_html=True)
 
-# --- 2. LOGIK-FUNKTIONEN ---
+# --- 2. LOGIK-FUNKTIONEN (JETZT MIT BAYES-UPDATE) ---
 def get_expert_analysis(top_reason, current_vals):
     mapping = {
         "Material-Ermüdung": {
@@ -86,28 +86,35 @@ def get_expert_analysis(top_reason, current_vals):
             "diag": "DIAGNOSE: GEFÜGESCHADEN",
             "exp": "Interkristalline Risse im Kernbereich detektiert.", 
             "maint": "Kein Nachschliff zulässig. Schadensverlauf für Qualitätsmanagement protokollieren.",
-            "act": "SOFORT-ABSCHALTUNG: Werkzeugbruch steht unmittelbar bevor. Prozess sofort stoppen."
+            "act": "SOFORT-AUSSTRAG: Werkzeugbruch steht unmittelbar bevor. Prozess sofort stoppen."
         }
     }
     base = mapping.get(top_reason, {"diag": "DIAGNOSE: STABIL", "exp": "Parameter innerhalb Toleranz.", "maint": "Routine-Kontrolle.", "act": "Kein Eingriff nötig."})
     base["snapshot"] = f"SENSOREN: {current_vals['t']:.1f}°C | {current_vals['v']:.2f} mm/s Vibration | {current_vals['d']:.1f} Nm Last"
     return base
 
-def calculate_metrics(alter, last, thermik, vibration, kuehlung_ausfall, integritaet):
+def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kuehlung_ausfall, integritaet):
+    # 1. Likelihood-Berechnung (basierend auf aktuellen Sensoren)
     w = [1.2, 2.4, 3.8, 3.0, 4.5, 0.10]
     raw_scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kuehlung_ausfall * w[4], (100 - integritaet) * w[5]]
     z = sum(raw_scores)
-    risk = 1 / (1 + np.exp(-(z - 9.5)))
+    likelihood = 1 / (1 + np.exp(-(z - 9.5)))
+    
+    # 2. Bayessches Update: P(H|E) = (P(E|H) * P(H)) / P(E)
+    # Vereinfachtes Update für Zeitreihen-Stabilität
+    posterior = (likelihood * 0.3) + (prior_risk * 0.7)
+    
     labels = ["Material-Ermüdung", "Überlastung", "Gefüge-Überhitzung", "Resonanz-Instabilität", "Kühlungs-Defizit", "Struktur-Vorschaden"]
     total = sum(raw_scores) if sum(raw_scores) > 0 else 1
     norm_scores = [(s / total) * 100 for s in raw_scores]
     evidenz = sorted(zip(labels, norm_scores), key=lambda x: x[1], reverse=True)
-    rul = int(max(0, (integritaet - 10) / max(0.01, (risk * 0.45))) * 5.5) if risk < 0.98 else 0
-    return np.clip(risk, 0.001, 0.999), evidenz, rul
+    
+    rul = int(max(0, (integritaet - 10) / max(0.01, (posterior * 0.45))) * 5.5) if posterior < 0.98 else 0
+    return np.clip(posterior, 0.001, 0.999), evidenz, rul
 
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
-    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
 
 MATERIALIEN = {
     "Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450},
@@ -140,9 +147,11 @@ if s['active'] and not s['broken']:
     s['drehmoment'] = ((m['kc1.1'] * (f ** -m['mc']) * f * (d/2)**2) / 1000) * sens_load
     s['verschleiss'] += ((m['rate'] * (vc**1.7) * f) / (12000 if kuehlung else 300)) * zyklus_sprung
     s['thermik'] += ((22 + (s['verschleiss']*1.4) + (vc*0.22) + (0 if kuehlung else 280)) - s['thermik']) * 0.25
-    # Vibration skaliert auf mm/s Schwinggeschwindigkeit
     s['vibration'] = (((s['verschleiss']*0.08 + vc*0.015 + s['drehmoment']*0.05) * sens_vibr) + s['seed'].normal(0, 0.2)) * 2.0
-    s['risk'], evidenz_list, s['rul'] = calculate_metrics(s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration']/20, 1.0 if not kuehlung else 0.0, s['integritaet'])
+    
+    # BAYESSIAN UPDATE CALL
+    s['risk'], evidenz_list, s['rul'] = calculate_metrics_bayesian(s['risk'], s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration']/20, 1.0 if not kuehlung else 0.0, s['integritaet'])
+    
     s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (max(0,s['vibration'])/40)*0.05) * zyklus_sprung
     if s['integritaet'] <= 0: s['broken'], s['active'], s['integritaet'] = True, False, 0
     expert_info = get_expert_analysis(evidenz_list[0][0], {'t': s['thermik'], 'v': s['vibration'], 'd': s['drehmoment']})
@@ -155,9 +164,9 @@ if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WER
 m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
 m0.markdown(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
 m1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
-m2.markdown(f'<div class="glass-card"><span class="val-title">Risiko</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
+m2.markdown(f'<div class="glass-card"><span class="val-title">Risiko (Bayes)</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
 m3.markdown(f'<div class="glass-card"><span class="val-title">Wartung</span><br><span class="val-main" style="color:#58a6ff">{s["rul"]} Z.</span></div>', unsafe_allow_html=True)
-m4.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
+m4.markdown(f'<div class="glass-card"><span class="val-title">Thermik</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
 m5.markdown(f'<div class="glass-card"><span class="val-title">Vibration (mm/s)</span><br><span class="val-main" style="color:#bc8cff">{max(0,s["vibration"]):.1f}</span></div>', unsafe_allow_html=True)
 m6.markdown(f'<div class="glass-card"><span class="val-title">Last (Nm)</span><br><span class="val-main">{s["drehmoment"]:.1f}</span></div>', unsafe_allow_html=True)
 
@@ -168,7 +177,7 @@ with tab1:
     with col_l:
         if s['history']:
             df = pd.DataFrame(s['history'])
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Temperatur & Vibration (mm/s)", "KI: Bruchrisiko %"))
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Hitze & Vibration (mm/s)", "KI: Bruchrisiko % (Posteriori)"))
             fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', line=dict(color='#3fb950', width=3)), 1, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['t'], line=dict(color='#f85149')), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['v'], line=dict(color='#bc8cff')), 2, 1)
@@ -207,11 +216,12 @@ with tab2:
         sim_last = st.slider("Sim. Last [Nm]", 0, 300, 40)
         sim_vibr = st.slider("Sim. Vibration [mm/s]", 0.0, 50.0, 5.0)
     with sc2:
-        sim_temp = st.slider("Sim. Temp. [°C]", 20, 1200, 150)
+        sim_temp = st.slider("Sim. Hitze [°C]", 20, 1200, 150)
         sim_integ = st.slider("Integrität [%]", 0, 100, 100)
         sim_kuehl = st.toggle("Sim. Kühlungs-Ausfall")
     with sc3:
-        r_sim, evidenz_sim, rul_sim = calculate_metrics(sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/25, 1.0 if sim_kuehl else 0.0, sim_integ)
+        # Im Labor nutzen wir statisches Bayes (Prior=0.5)
+        r_sim, evidenz_sim, rul_sim = calculate_metrics_bayesian(0.5, sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/25, 1.0 if sim_kuehl else 0.0, sim_integ)
         fig_radar = go.Figure(data=go.Scatterpolar(r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*2, (100 if sim_kuehl else 0)], theta=['Alter','Last','Hitze','Vibration','Kühlung'], fill='toself', line=dict(color='#e3b341')))
         fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 100])), showlegend=False, height=300, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_radar, use_container_width=True)
@@ -221,7 +231,7 @@ st.divider()
 c1, c2 = st.columns(2)
 if c1.button("▶ START / STOPP", use_container_width=True): s['active'] = not s['active']
 if c2.button("🔄 NEUES WERKZEUG", use_container_width=True):
-    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.0, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
     st.rerun()
 
 if s['active']:
