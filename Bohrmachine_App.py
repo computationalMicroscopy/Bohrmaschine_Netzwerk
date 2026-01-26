@@ -86,7 +86,7 @@ def get_expert_analysis(top_reason, current_vals):
             "diag": "DIAGNOSE: GEFÜGESCHADEN",
             "exp": "Interkristalline Risse im Kernbereich detektiert.", 
             "maint": "Kein Nachschliff zulässig. Schadensverlauf für Qualitätsmanagement protokollieren.",
-            "act": "SOFORT-AUSSTRAG: Werkzeugbruch steht unmittelbar bevor. Prozess sofort stoppen."
+            "act": "SOFORT-ABSCHALTUNG: Werkzeugbruch steht unmittelbar bevor. Prozess sofort stoppen."
         }
     }
     base = mapping.get(top_reason, {"diag": "DIAGNOSE: STABIL", "exp": "Parameter innerhalb Toleranz.", "maint": "Routine-Kontrolle.", "act": "Kein Eingriff nötig."})
@@ -157,7 +157,7 @@ m0.markdown(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><
 m1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
 m2.markdown(f'<div class="glass-card"><span class="val-title">Risiko</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
 m3.markdown(f'<div class="glass-card"><span class="val-title">Wartung</span><br><span class="val-main" style="color:#58a6ff">{s["rul"]} Z.</span></div>', unsafe_allow_html=True)
-m4.markdown(f'<div class="glass-card"><span class="val-title">Thermik</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
+m4.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
 m5.markdown(f'<div class="glass-card"><span class="val-title">Vibration (mm/s)</span><br><span class="val-main" style="color:#bc8cff">{max(0,s["vibration"]):.1f}</span></div>', unsafe_allow_html=True)
 m6.markdown(f'<div class="glass-card"><span class="val-title">Last (Nm)</span><br><span class="val-main">{s["drehmoment"]:.1f}</span></div>', unsafe_allow_html=True)
 
