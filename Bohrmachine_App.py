@@ -22,7 +22,6 @@ st.markdown("""
     .val-title { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.2px; }
     .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 800; }
     
-    /* XAI Monitor - Ultra Detail Modus */
     .xai-container { height: 650px; overflow-y: auto; padding-right: 10px; }
     .xai-card {
         background: rgba(30, 35, 45, 0.9); border-left: 5px solid #e3b341;
@@ -49,66 +48,67 @@ st.markdown("""
 
 st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow_html=True)
 
-# --- 2. LOGIK-FUNKTIONEN (JETZT MIT BAYES-UPDATE) ---
-def get_expert_analysis(top_reason, current_vals):
+# --- 2. DYNAMISCHE DIAGNOSE-ENGINE (JETZT AKTIONS-REAKTIV) ---
+def get_dynamic_expert_analysis(top_reason, current_vals, settings):
+    vc, f, d, k = settings['vc'], settings['f'], settings['d'], settings['k']
+    
     mapping = {
         "Material-Ermüdung": {
             "diag": "DIAGNOSE: ADHÄSIVER VERSCHLEISS",
-            "exp": "Degradation der Schneidkantenstabilität durch zyklische Wechselbelastung.", 
-            "maint": "Prüfung der Freifläche auf Verschleißmarkenbreite (>0.2mm). Dokumentation der Bohrungsanzahl. Kontrolle auf Mikroausbrüche.",
-            "act": "WERKZEUGWECHSEL: Standzeitende erreicht. Bei vorzeitigem Verschleiß vc um 10% reduzieren."
+            "exp": f"Gefüge-Ermüdung bei vc={vc}m/min. Die Schneidkante verliert an Mikro-Härte.", 
+            "maint": "Prüfung der Freifläche. Fokus auf Kammrisse durch thermomechanische Wechselbelastung.",
+            "act": f"REDUKTION: Senken Sie vc auf {int(vc*0.85)} m/min. Aktueller Verschleißfortschritt kritisch."
         },
         "Überlastung": {
             "diag": "DIAGNOSE: MECHANISCHE ÜBERLAST",
-            "exp": "Drehmoment-Lastspitzen überschreiten Sicherheitsfenster für Bohrerdurchmesser.", 
-            "maint": "Rundlaufprüfung (<0.02mm). Prüfung der Drehmomentstütze. Spannut auf Spänestau untersuchen.",
-            "act": "PROZESSKORREKTUR: Vorschub f reduzieren. Spanbruchgeometrie optimieren."
+            "exp": f"Vorschub f={f}mm/U erzeugt {current_vals['d']:.1f}Nm Drehmoment. Grenzspannung erreicht.", 
+            "maint": f"Kontrolle der Werkzeugaufnahme. Bei Ø{d}mm droht Schaftbruch im Spannfutter.",
+            "act": f"SOFORT-KORREKTUR: Vorschub f auf {f*0.7:.2f}mm/U begrenzen, um Spindellast zu senken."
         },
         "Gefüge-Überhitzung": {
             "diag": "DIAGNOSE: THERMISCHE ÜBERLAST",
-            "exp": "Temperatur in Wirkzone destabilisiert AlTiN-Beschichtung und Binder.", 
-            "maint": "Prüfung der Spanfarbe. Temperatur Kühlmittel-Rücklauf messen. Refraktometer-Prüfung Kühlung.",
-            "act": "KÜHLUNGS-CHECK: Durchfluss erhöhen oder vc senken, um Reibungswärme zu minimieren."
+            "exp": f"Prozesstemperatur ({current_vals['t']:.0f}°C) übersteigt kritische AlTiN-Schwelle.", 
+            "maint": "Prüfung auf Kolkverschleiß. Die Spanfarbe deutet auf Oxidationsprozesse hin.",
+            "act": "KÜHLUNG OPTIMIEREN: vc reduzieren oder Innendruck der Kühlung auf >40 bar erhöhen."
         },
         "Resonanz-Instabilität": {
             "diag": "DIAGNOSE: DYNAMISCHE INSTABILITÄT",
-            "exp": "Vibrationsgeschwindigkeiten außerhalb der Toleranz führen zu Stoßbelastungen.", 
-            "maint": "Auskraglänge minimieren. Spindellagerung prüfen. Analyse des mm/s Schwingungs-Spektrums.",
-            "act": "FREQUENZ-OPTIMIERUNG: Drehzahl variieren, um kritische Schwinggeschwindigkeit zu senken."
+            "exp": f"Vibration von {current_vals['v']:.2f}mm/s bei vc={vc}m/min deutet auf Rattern hin.", 
+            "maint": "Auskraglänge prüfen. Resonanz liegt vermutlich nah an der aktuellen Spindelfrequenz.",
+            "act": f"FREQUENZ-SHIFT: Drehzahl variieren. Testen Sie vc={int(vc*1.1)} oder {int(vc*0.9)}."
         },
         "Kühlungs-Defizit": {
             "diag": "DIAGNOSE: TRIBOLOGIE-VERSAGEN",
-            "exp": "Schmierfilmabriss führt zu Aufbauschneiden und Materialverschweißung.", 
-            "maint": "Düsen auf Verstopfung prüfen. Pumpendruck kontrollieren. Strahlausrichtung auf Spannut sicherstellen.",
-            "act": "NOTFALL-STOPP GEFAHR: Versorgung mit Kühlung sicherstellen. Interne Kanäle reinigen."
+            "exp": "Kritischer Schmierfilmabriss detektiert. Massive Reibung an den Führungsfasen.", 
+            "maint": "Kühlmittel-Konzentration prüfen. Aufbauschneidenbildung (BUE) wahrscheinlich.",
+            "act": "SYSTEMCHECK: Kühlung ist deaktiviert oder blockiert. Sofortiger Stopp zur Reinigung."
         },
         "Struktur-Vorschaden": {
             "diag": "DIAGNOSE: GEFÜGESCHADEN",
-            "exp": "Interkristalline Risse im Kernbereich detektiert.", 
-            "maint": "Kein Nachschliff zulässig. Schadensverlauf für Qualitätsmanagement protokollieren.",
-            "act": "SOFORT-AUSSTRAG: Werkzeugbruch steht unmittelbar bevor. Prozess sofort stoppen."
+            "exp": "Interkristalline Rissausbreitung im Hartmetall-Kern detektiert.", 
+            "maint": "Akkustische Emissionsprüfung empfohlen. Strukturintegrität unter 40%.",
+            "act": "NOT-AUS EMPFEHLUNG: Werkzeugbruch unvermeidbar bei Fortführung aktueller Last."
         }
     }
-    base = mapping.get(top_reason, {"diag": "DIAGNOSE: STABIL", "exp": "Parameter innerhalb Toleranz.", "maint": "Routine-Kontrolle.", "act": "Kein Eingriff nötig."})
-    base["snapshot"] = f"SENSOREN: {current_vals['t']:.1f}°C | {current_vals['v']:.2f} mm/s Vibration | {current_vals['d']:.1f} Nm Last"
-    return base
+    
+    # Spezifische Ergänzung bei Kühlungs-Aktion
+    res = mapping.get(top_reason, {"diag": "DIAGNOSE: STABIL", "exp": "Parameter im Zielkorridor.", "maint": "Standard-Intervall.", "act": "Keine Korrektur nötig."})
+    if not k and current_vals['t'] > 300:
+        res["act"] = "ACHTUNG: Trockenbearbeitung bei diesen Parametern erhöht Verschleißfaktor um 40x!"
+        
+    res["snapshot"] = f"IST: {current_vals['t']:.1f}°C | {current_vals['v']:.2f} mm/s | {current_vals['d']:.1f} Nm"
+    return res
 
 def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kuehlung_ausfall, integritaet):
-    # 1. Likelihood-Berechnung (basierend auf aktuellen Sensoren)
     w = [1.2, 2.4, 3.8, 3.0, 4.5, 0.10]
     raw_scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kuehlung_ausfall * w[4], (100 - integritaet) * w[5]]
     z = sum(raw_scores)
     likelihood = 1 / (1 + np.exp(-(z - 9.5)))
-    
-    # 2. Bayessches Update: P(H|E) = (P(E|H) * P(H)) / P(E)
-    # Vereinfachtes Update für Zeitreihen-Stabilität
     posterior = (likelihood * 0.3) + (prior_risk * 0.7)
-    
     labels = ["Material-Ermüdung", "Überlastung", "Gefüge-Überhitzung", "Resonanz-Instabilität", "Kühlungs-Defizit", "Struktur-Vorschaden"]
     total = sum(raw_scores) if sum(raw_scores) > 0 else 1
     norm_scores = [(s / total) * 100 for s in raw_scores]
     evidenz = sorted(zip(labels, norm_scores), key=lambda x: x[1], reverse=True)
-    
     rul = int(max(0, (integritaet - 10) / max(0.01, (posterior * 0.45))) * 5.5) if posterior < 0.98 else 0
     return np.clip(posterior, 0.001, 0.999), evidenz, rul
 
@@ -149,16 +149,17 @@ if s['active'] and not s['broken']:
     s['thermik'] += ((22 + (s['verschleiss']*1.4) + (vc*0.22) + (0 if kuehlung else 280)) - s['thermik']) * 0.25
     s['vibration'] = (((s['verschleiss']*0.08 + vc*0.015 + s['drehmoment']*0.05) * sens_vibr) + s['seed'].normal(0, 0.2)) * 2.0
     
-    # BAYESSIAN UPDATE CALL
     s['risk'], evidenz_list, s['rul'] = calculate_metrics_bayesian(s['risk'], s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration']/20, 1.0 if not kuehlung else 0.0, s['integritaet'])
-    
     s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (max(0,s['vibration'])/40)*0.05) * zyklus_sprung
     if s['integritaet'] <= 0: s['broken'], s['active'], s['integritaet'] = True, False, 0
-    expert_info = get_expert_analysis(evidenz_list[0][0], {'t': s['thermik'], 'v': s['vibration'], 'd': s['drehmoment']})
+    
+    # Aufruf der dynamischen Analyse
+    expert_info = get_dynamic_expert_analysis(evidenz_list[0][0], {'t': s['thermik'], 'v': s['vibration'], 'd': s['drehmoment']}, {'vc': vc, 'f': f, 'd': d, 'k': kuehlung})
+    
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': expert_info, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
 
-# --- 6. UI HEADER ---
+# --- 6. UI ---
 if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH</div>', unsafe_allow_html=True)
 
 m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
@@ -177,14 +178,13 @@ with tab1:
     with col_l:
         if s['history']:
             df = pd.DataFrame(s['history'])
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Hitze & Vibration (mm/s)", "KI: Bruchrisiko % (Posteriori)"))
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Hitze & Vibration", "KI: Bruchrisiko %"))
             fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', line=dict(color='#3fb950', width=3)), 1, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['t'], line=dict(color='#f85149')), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['v'], line=dict(color='#bc8cff')), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['r']*100, line=dict(color='#e3b341', width=3)), 3, 1)
             fig.update_layout(height=650, template="plotly_dark", showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
-    
     with col_r:
         st.markdown("### 🧠 Deep XAI: Diagnosezentrum")
         xai_html = '<div class="xai-container">'
@@ -220,12 +220,10 @@ with tab2:
         sim_integ = st.slider("Integrität [%]", 0, 100, 100)
         sim_kuehl = st.toggle("Sim. Kühlungs-Ausfall")
     with sc3:
-        # Im Labor nutzen wir statisches Bayes (Prior=0.5)
         r_sim, evidenz_sim, rul_sim = calculate_metrics_bayesian(0.5, sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/25, 1.0 if sim_kuehl else 0.0, sim_integ)
         fig_radar = go.Figure(data=go.Scatterpolar(r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*2, (100 if sim_kuehl else 0)], theta=['Alter','Last','Hitze','Vibration','Kühlung'], fill='toself', line=dict(color='#e3b341')))
         fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 100])), showlegend=False, height=300, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_radar, use_container_width=True)
-        st.markdown(f'<div class="glass-card" style="text-align:center;"><b>PROGNOSE</b><h1>{rul_sim} Zyklen</h1></div>', unsafe_allow_html=True)
 
 st.divider()
 c1, c2 = st.columns(2)
