@@ -48,50 +48,57 @@ st.markdown("""
 
 st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow_html=True)
 
-# --- 2. DYNAMISCHE DIAGNOSE-ENGINE (JETZT AKTIONS-REAKTIV) ---
-def get_dynamic_expert_analysis(top_reason, current_vals, settings):
+# --- 2. DYNAMISCHE DIAGNOSE-ENGINE ---
+def get_dynamic_expert_analysis(top_reason, current_vals, settings, integritaet):
     vc, f, d, k = settings['vc'], settings['f'], settings['d'], settings['k']
     
+    # Detaillierte Integritäts-Risiko-Analyse
+    integ_impact = "KRITISCH" if integritaet < 50 else ("DEGRADED" if integritaet < 80 else "STABIL")
+    integ_text = f"AKTUELLER STATUS: {integritaet:.1f}% Integrität ({integ_impact}). "
+    if integritaet < 50:
+        integ_detail = "Die Materialermüdung ist so weit fortgeschritten, dass die Risszähigkeit (K1C) massiv gesunken ist. Jede weitere Lastspitze führt nun zu überproportionalem Risikowachstum."
+    else:
+        integ_detail = "Das Material befindet sich noch im Bereich der elastischen/stabilen Verformung. Das Risiko korreliert hier primär mit den Prozessparametern."
+
     mapping = {
         "Material-Ermüdung": {
             "diag": "DIAGNOSE: ADHÄSIVER VERSCHLEISS",
-            "exp": f"Gefüge-Ermüdung bei vc={vc}m/min. Die Schneidkante verliert an Mikro-Härte.", 
-            "maint": "Prüfung der Freifläche. Fokus auf Kammrisse durch thermomechanische Wechselbelastung.",
+            "exp": f"Gefüge-Ermüdung bei vc={vc}m/min. {integ_detail}", 
+            "maint": f"Check der Freiflächen. {integ_text} Integritätsverlust beschleunigt Mikrorissbildung.",
             "act": f"REDUKTION: Senken Sie vc auf {int(vc*0.85)} m/min. Aktueller Verschleißfortschritt kritisch."
         },
         "Überlastung": {
             "diag": "DIAGNOSE: MECHANISCHE ÜBERLAST",
-            "exp": f"Vorschub f={f}mm/U erzeugt {current_vals['d']:.1f}Nm Drehmoment. Grenzspannung erreicht.", 
-            "maint": f"Kontrolle der Werkzeugaufnahme. Bei Ø{d}mm droht Schaftbruch im Spannfutter.",
+            "exp": f"Vorschub f={f}mm/U erzeugt {current_vals['d']:.1f}Nm. {integ_detail}", 
+            "maint": f"Kontrolle der Werkzeugaufnahme. {integ_text} Geringe Rest-Integrität senkt Bruchmoment-Schwelle.",
             "act": f"SOFORT-KORREKTUR: Vorschub f auf {f*0.7:.2f}mm/U begrenzen, um Spindellast zu senken."
         },
         "Gefüge-Überhitzung": {
             "diag": "DIAGNOSE: THERMISCHE ÜBERLAST",
-            "exp": f"Prozesstemperatur ({current_vals['t']:.0f}°C) übersteigt kritische AlTiN-Schwelle.", 
-            "maint": "Prüfung auf Kolkverschleiß. Die Spanfarbe deutet auf Oxidationsprozesse hin.",
+            "exp": f"Prozesstemperatur ({current_vals['t']:.0f}°C). {integ_detail}", 
+            "maint": f"Prüfung auf Kolkverschleiß. {integ_text} Thermische Erweichung reduziert die Rest-Integrität rapide.",
             "act": "KÜHLUNG OPTIMIEREN: vc reduzieren oder Innendruck der Kühlung auf >40 bar erhöhen."
         },
         "Resonanz-Instabilität": {
             "diag": "DIAGNOSE: DYNAMISCHE INSTABILITÄT",
-            "exp": f"Vibration von {current_vals['v']:.2f}mm/s bei vc={vc}m/min deutet auf Rattern hin.", 
-            "maint": "Auskraglänge prüfen. Resonanz liegt vermutlich nah an der aktuellen Spindelfrequenz.",
+            "exp": f"Vibration von {current_vals['v']:.2f}mm/s. {integ_detail}", 
+            "maint": f"Auskraglänge prüfen. {integ_text} Schwingungen bei niedriger Integrität forcieren Materialbruch.",
             "act": f"FREQUENZ-SHIFT: Drehzahl variieren. Testen Sie vc={int(vc*1.1)} oder {int(vc*0.9)}."
         },
         "Kühlungs-Defizit": {
             "diag": "DIAGNOSE: TRIBOLOGIE-VERSAGEN",
-            "exp": "Kritischer Schmierfilmabriss detektiert. Massive Reibung an den Führungsfasen.", 
-            "maint": "Kühlmittel-Konzentration prüfen. Aufbauschneidenbildung (BUE) wahrscheinlich.",
+            "exp": f"Kritischer Schmierfilmabriss. {integ_detail}", 
+            "maint": f"Kühlmittel-Konzentration prüfen. {integ_text} Ohne Kühlung sinkt Integrität exponentiell.",
             "act": "SYSTEMCHECK: Kühlung ist deaktiviert oder blockiert. Sofortiger Stopp zur Reinigung."
         },
         "Struktur-Vorschaden": {
             "diag": "DIAGNOSE: GEFÜGESCHADEN",
-            "exp": "Interkristalline Rissausbreitung im Hartmetall-Kern detektiert.", 
-            "maint": "Akkustische Emissionsprüfung empfohlen. Strukturintegrität unter 40%.",
+            "exp": f"Massiver Integritätsverlust detektiert ({integritaet:.1f}%). {integ_detail}", 
+            "maint": f"Akkustische Emissionsprüfung. {integ_text} Totalausfall steht unmittelbar bevor.",
             "act": "NOT-AUS EMPFEHLUNG: Werkzeugbruch unvermeidbar bei Fortführung aktueller Last."
         }
     }
     
-    # Spezifische Ergänzung bei Kühlungs-Aktion
     res = mapping.get(top_reason, {"diag": "DIAGNOSE: STABIL", "exp": "Parameter im Zielkorridor.", "maint": "Standard-Intervall.", "act": "Keine Korrektur nötig."})
     if not k and current_vals['t'] > 300:
         res["act"] = "ACHTUNG: Trockenbearbeitung bei diesen Parametern erhöht Verschleißfaktor um 40x!"
@@ -153,8 +160,7 @@ if s['active'] and not s['broken']:
     s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (max(0,s['vibration'])/40)*0.05) * zyklus_sprung
     if s['integritaet'] <= 0: s['broken'], s['active'], s['integritaet'] = True, False, 0
     
-    # Aufruf der dynamischen Analyse
-    expert_info = get_dynamic_expert_analysis(evidenz_list[0][0], {'t': s['thermik'], 'v': s['vibration'], 'd': s['drehmoment']}, {'vc': vc, 'f': f, 'd': d, 'k': kuehlung})
+    expert_info = get_dynamic_expert_analysis(evidenz_list[0][0], {'t': s['thermik'], 'v': s['vibration'], 'd': s['drehmoment']}, {'vc': vc, 'f': f, 'd': d, 'k': kuehlung}, s['integritaet'])
     
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': expert_info, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
