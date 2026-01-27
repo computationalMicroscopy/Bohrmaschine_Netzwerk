@@ -52,63 +52,62 @@ st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow
 def get_dynamic_expert_analysis(top_reason, current_vals, settings, integritaet):
     vc, f, d, k = settings['vc'], settings['f'], settings['d'], settings['k']
     
-    # Detaillierte Integritäts-Risiko-Analyse
     integ_impact = "KRITISCH" if integritaet < 50 else ("DEGRADED" if integritaet < 80 else "STABIL")
-    integ_text = f"AKTUELLER STATUS: {integritaet:.1f}% Integrität ({integ_impact}). "
-    if integritaet < 50:
-        integ_detail = "Die Materialermüdung ist so weit fortgeschritten, dass die Risszähigkeit (K1C) massiv gesunken ist. Jede weitere Lastspitze führt nun zu überproportionalem Risikowachstum."
+    integ_text = f"STATUS: {integritaet:.1f}% ({integ_impact}). "
+    
+    # Plausibilitäts-Check für Gewaltbruch (Hohe Integrität + Hohe Last)
+    if current_vals['d'] > (d * 10) and integritaet > 80:
+        integ_detail = "GEVALTBRUCH-WARNUNG: Die mechanische Last überschreitet die Biegebruchfestigkeit des Gefüges trotz hoher Materialintegrität."
     else:
-        integ_detail = "Das Material befindet sich noch im Bereich der elastischen/stabilen Verformung. Das Risiko korreliert hier primär mit den Prozessparametern."
+        integ_detail = "Die Korrelation zwischen Risszähigkeit und Lastspitzen ist stabil." if integritaet > 50 else "Geringe Risszähigkeit führt zu exponentiellem Risikowachstum bei Last."
 
     mapping = {
         "Material-Ermüdung": {
             "diag": "DIAGNOSE: ADHÄSIVER VERSCHLEISS",
             "exp": f"Gefüge-Ermüdung bei vc={vc}m/min. {integ_detail}", 
-            "maint": f"Check der Freiflächen. {integ_text} Integritätsverlust beschleunigt Mikrorissbildung.",
-            "act": f"REDUKTION: Senken Sie vc auf {int(vc*0.85)} m/min. Aktueller Verschleißfortschritt kritisch."
+            "maint": f"Check der Freiflächen. {integ_text} Verschleiß beschleunigt Mikrorisse.",
+            "act": f"REDUKTION: vc auf {int(vc*0.85)} m/min senken."
         },
         "Überlastung": {
             "diag": "DIAGNOSE: MECHANISCHE ÜBERLAST",
             "exp": f"Vorschub f={f}mm/U erzeugt {current_vals['d']:.1f}Nm. {integ_detail}", 
-            "maint": f"Kontrolle der Werkzeugaufnahme. {integ_text} Geringe Rest-Integrität senkt Bruchmoment-Schwelle.",
-            "act": f"SOFORT-KORREKTUR: Vorschub f auf {f*0.7:.2f}mm/U begrenzen, um Spindellast zu senken."
+            "maint": f"Kontrolle der Aufnahme. {integ_text} Geringe Integrität senkt Bruchschwelle.",
+            "act": f"KORREKTUR: Vorschub f auf {f*0.7:.2f}mm/U begrenzen."
         },
         "Gefüge-Überhitzung": {
             "diag": "DIAGNOSE: THERMISCHE ÜBERLAST",
-            "exp": f"Prozesstemperatur ({current_vals['t']:.0f}°C). {integ_detail}", 
-            "maint": f"Prüfung auf Kolkverschleiß. {integ_text} Thermische Erweichung reduziert die Rest-Integrität rapide.",
-            "act": "KÜHLUNG OPTIMIEREN: vc reduzieren oder Innendruck der Kühlung auf >40 bar erhöhen."
+            "exp": f"Temperatur ({current_vals['t']:.0f}°C). {integ_detail}", 
+            "maint": f"Check auf Kolkverschleiß. {integ_text} Hitze reduziert Integrität rapide.",
+            "act": "KÜHLUNG OPTIMIEREN: vc senken oder Kühlmitteldruck erhöhen."
         },
         "Resonanz-Instabilität": {
             "diag": "DIAGNOSE: DYNAMISCHE INSTABILITÄT",
             "exp": f"Vibration von {current_vals['v']:.2f}mm/s. {integ_detail}", 
-            "maint": f"Auskraglänge prüfen. {integ_text} Schwingungen bei niedriger Integrität forcieren Materialbruch.",
-            "act": f"FREQUENZ-SHIFT: Drehzahl variieren. Testen Sie vc={int(vc*1.1)} oder {int(vc*0.9)}."
+            "maint": f"Auskraglänge prüfen. {integ_text} Schwingungen forcieren Materialbruch.",
+            "act": f"FREQUENZ-SHIFT: vc auf {int(vc*1.1)} oder {int(vc*0.9)} variieren."
         },
         "Kühlungs-Defizit": {
             "diag": "DIAGNOSE: TRIBOLOGIE-VERSAGEN",
-            "exp": f"Kritischer Schmierfilmabriss. {integ_detail}", 
-            "maint": f"Kühlmittel-Konzentration prüfen. {integ_text} Ohne Kühlung sinkt Integrität exponentiell.",
-            "act": "SYSTEMCHECK: Kühlung ist deaktiviert oder blockiert. Sofortiger Stopp zur Reinigung."
+            "exp": f"Schmierfilmabriss detektiert. {integ_detail}", 
+            "maint": f"Konzentration prüfen. {integ_text} Ohne Kühlung sinkt Integrität exponentiell.",
+            "act": "SYSTEMCHECK: Kühlung blockiert oder deaktiviert. Stopp nötig."
         },
         "Struktur-Vorschaden": {
             "diag": "DIAGNOSE: GEFÜGESCHADEN",
-            "exp": f"Massiver Integritätsverlust detektiert ({integritaet:.1f}%). {integ_detail}", 
-            "maint": f"Akkustische Emissionsprüfung. {integ_text} Totalausfall steht unmittelbar bevor.",
-            "act": "NOT-AUS EMPFEHLUNG: Werkzeugbruch unvermeidbar bei Fortführung aktueller Last."
+            "exp": f"Integrität bei {integritaet:.1f}%. {integ_detail}", 
+            "maint": f"Emissionsprüfung empfohlen. {integ_text} Totalausfall droht.",
+            "act": "NOT-AUS: Werkzeugwechsel sofort einleiten."
         }
     }
     
     res = mapping.get(top_reason, {"diag": "DIAGNOSE: STABIL", "exp": "Parameter im Zielkorridor.", "maint": "Standard-Intervall.", "act": "Keine Korrektur nötig."})
-    if not k and current_vals['t'] > 300:
-        res["act"] = "ACHTUNG: Trockenbearbeitung bei diesen Parametern erhöht Verschleißfaktor um 40x!"
-        
     res["snapshot"] = f"IST: {current_vals['t']:.1f}°C | {current_vals['v']:.2f} mm/s | {current_vals['d']:.1f} Nm"
     return res
 
 def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kuehlung_ausfall, integritaet):
-    w = [1.2, 2.4, 3.8, 3.0, 4.5, 0.10]
-    raw_scores = [alter * w[0], last * w[1], thermik * w[2], vibration * w[3], kuehlung_ausfall * w[4], (100 - integritaet) * w[5]]
+    # Justierung der Gewichte für realistischere Sensitivität (Vibration Gewicht leicht erhöht)
+    w = [1.2, 2.4, 3.8, 4.2, 4.5, 0.10]
+    raw_scores = [alter * w[0], last * w[1], thermik * w[2], (vibration/10) * w[3], kuehlung_ausfall * w[4], (100 - integritaet) * w[5]]
     z = sum(raw_scores)
     likelihood = 1 / (1 + np.exp(-(z - 9.5)))
     posterior = (likelihood * 0.3) + (prior_risk * 0.7)
@@ -154,14 +153,16 @@ if s['active'] and not s['broken']:
     s['drehmoment'] = ((m['kc1.1'] * (f ** -m['mc']) * f * (d/2)**2) / 1000) * sens_load
     s['verschleiss'] += ((m['rate'] * (vc**1.7) * f) / (12000 if kuehlung else 300)) * zyklus_sprung
     s['thermik'] += ((22 + (s['verschleiss']*1.4) + (vc*0.22) + (0 if kuehlung else 280)) - s['thermik']) * 0.25
-    s['vibration'] = (((s['verschleiss']*0.08 + vc*0.015 + s['drehmoment']*0.05) * sens_vibr) + s['seed'].normal(0, 0.2)) * 2.0
     
-    s['risk'], evidenz_list, s['rul'] = calculate_metrics_bayesian(s['risk'], s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration']/20, 1.0 if not kuehlung else 0.0, s['integritaet'])
-    s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (max(0,s['vibration'])/40)*0.05) * zyklus_sprung
+    # NEUE SKALIERUNG: Vibration im Normalbereich 1.5 - 4.5 mm/s
+    base_vib = (s['verschleiss']*0.04 + vc*0.005 + s['drehmoment']*0.02)
+    s['vibration'] = ((base_vib * sens_vibr) + s['seed'].normal(1.5, 0.3))
+    
+    s['risk'], evidenz_list, s['rul'] = calculate_metrics_bayesian(s['risk'], s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration'], 1.0 if not kuehlung else 0.0, s['integritaet'])
+    s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (max(0,s['vibration'])/25)*0.05) * zyklus_sprung
     if s['integritaet'] <= 0: s['broken'], s['active'], s['integritaet'] = True, False, 0
     
     expert_info = get_dynamic_expert_analysis(evidenz_list[0][0], {'t': s['thermik'], 'v': s['vibration'], 'd': s['drehmoment']}, {'vc': vc, 'f': f, 'd': d, 'k': kuehlung}, s['integritaet'])
-    
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': expert_info, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
 
@@ -184,7 +185,7 @@ with tab1:
     with col_l:
         if s['history']:
             df = pd.DataFrame(s['history'])
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Hitze & Vibration", "KI: Bruchrisiko %"))
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Hitze & Vibration (mm/s)", "KI: Bruchrisiko %"))
             fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', line=dict(color='#3fb950', width=3)), 1, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['t'], line=dict(color='#f85149')), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['v'], line=dict(color='#bc8cff')), 2, 1)
@@ -226,7 +227,7 @@ with tab2:
         sim_integ = st.slider("Integrität [%]", 0, 100, 100)
         sim_kuehl = st.toggle("Sim. Kühlungs-Ausfall")
     with sc3:
-        r_sim, evidenz_sim, rul_sim = calculate_metrics_bayesian(0.5, sim_alter/800, sim_last/50, sim_temp/500, sim_vibr/25, 1.0 if sim_kuehl else 0.0, sim_integ)
+        r_sim, evidenz_sim, rul_sim = calculate_metrics_bayesian(0.5, sim_alter/800, sim_last/50, sim_temp/500, sim_vibr, 1.0 if sim_kuehl else 0.0, sim_integ)
         fig_radar = go.Figure(data=go.Scatterpolar(r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*2, (100 if sim_kuehl else 0)], theta=['Alter','Last','Hitze','Vibration','Kühlung'], fill='toself', line=dict(color='#e3b341')))
         fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 100])), showlegend=False, height=300, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_radar, use_container_width=True)
