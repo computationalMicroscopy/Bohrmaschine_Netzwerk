@@ -125,4 +125,76 @@ if s['active'] and not s['broken']:
 # --- 6. UI ---
 if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH</div>', unsafe_allow_html=True)
 
-m0, m1, m2, m3, m4, m5, m6 = st.columns
+m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
+m0.markdown(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
+m1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
+m2.markdown(f'<div class="glass-card"><span class="val-title">Risiko (Bayes)</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
+m3.markdown(f'<div class="glass-card"><span class="val-title">Wartung</span><br><span class="val-main" style="color:#58a6ff">{s["rul"]} Z.</span></div>', unsafe_allow_html=True)
+m4.markdown(f'<div class="glass-card"><span class="val-title">Thermik</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
+m5.markdown(f'<div class="glass-card"><span class="val-title">Vibration (mm/s)</span><br><span class="val-main" style="color:#bc8cff">{max(0,s["vibration"]):.1f}</span></div>', unsafe_allow_html=True)
+m6.markdown(f'<div class="glass-card"><span class="val-title">Last (Nm)</span><br><span class="val-main">{s["drehmoment"]:.1f}</span></div>', unsafe_allow_html=True)
+
+tab1, tab2 = st.tabs(["📊 LIVE-ANALYSE", "🧪 SZENARIO-LABOR"])
+
+with tab1:
+    col_l, col_r = st.columns([2.2, 1.8])
+    with col_l:
+        if s['history']:
+            df = pd.DataFrame(s['history'])
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Hitze & Vibration (mm/s)", "KI: Bruchrisiko %"))
+            fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', line=dict(color='#3fb950', width=3)), 1, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['t'], line=dict(color='#f85149')), 2, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['v'], line=dict(color='#bc8cff')), 2, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['r']*100, line=dict(color='#e3b341', width=3)), 3, 1)
+            fig.update_layout(height=650, template="plotly_dark", showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+    with col_r:
+        st.markdown("### 🧠 Deep XAI: Diagnosezentrum")
+        xai_html = '<div class="xai-container">'
+        for l in s['logs'][:15]:
+            features = "".join([f'<div class="xai-feature-row"><span>{e[0]}</span><span>{e[1]:.1f}%</span></div><div class="xai-bar-bg"><div class="xai-bar-fill" style="width:{e[1]}%"></div></div>' for e in l['evidenz'][:3]])
+            xai_html += f"""
+            <div class="xai-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span class="diag-badge">{l['info']['diag']}</span>
+                    <b style="font-size:11px; color:#8b949e;">LOG {l['zeit']} | KI-SICHERHEIT: {max([e[1] for e in l['evidenz']]):.1f}%</b>
+                </div>
+                <div class="reason-text">{l['info']['exp']}</div>
+                <div class="sensor-snapshot">{l['info']['snapshot']}</div>
+                <div style="margin-top:10px;">{features}</div>
+                <div class="maint-block">
+                    <div class="maint-title">Prüfprotokoll & Instandhaltung:</div>
+                    <div class="maint-text">{l['info']['maint']}</div>
+                </div>
+                <div class="action-text">HANDLUNGSANWEISUNG: {l['info']['act']}</div>
+            </div>"""
+        xai_html += '</div>'
+        st.markdown(xai_html, unsafe_allow_html=True)
+
+with tab2:
+    st.header("🧪 Was-Wäre-Wenn Labor")
+    sc1, sc2, sc3 = st.columns([1, 1, 2])
+    with sc1:
+        sim_alter = st.slider("Sim. Alter [Zyklen]", 0, 3000, 500)
+        sim_last = st.slider("Sim. Last [Nm]", 0, 300, 40)
+        sim_vibr = st.slider("Sim. Vibration [mm/s]", 0.0, 50.0, 5.0)
+    with sc2:
+        sim_temp = st.slider("Sim. Hitze [°C]", 20, 1200, 150)
+        sim_integ = st.slider("Integrität [%]", 0, 100, 100)
+        sim_kuehl = st.toggle("Sim. Kühlungs-Ausfall")
+    with sc3:
+        r_sim, evidenz_sim, rul_sim = calculate_metrics_bayesian(0.5, sim_alter/800, sim_last/50, sim_temp/500, sim_vibr, 1.0 if sim_kuehl else 0.0, sim_integ)
+        fig_radar = go.Figure(data=go.Scatterpolar(r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*2, (100 if sim_kuehl else 0)], theta=['Alter','Last','Hitze','Vibration','Kühlung'], fill='toself', line=dict(color='#e3b341')))
+        fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 100])), showlegend=False, height=300, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+st.divider()
+c1, c2 = st.columns(2)
+if c1.button("▶ START / STOPP", use_container_width=True): s['active'] = not s['active']
+if c2.button("🔄 NEUES WERKZEUG", use_container_width=True):
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
+    st.rerun()
+
+if s['active']:
+    time.sleep(sim_takt/1000)
+    st.rerun()
