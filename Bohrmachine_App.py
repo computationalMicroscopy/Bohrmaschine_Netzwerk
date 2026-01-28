@@ -62,7 +62,7 @@ def get_dynamic_expert_analysis(top_reason, current_vals, settings, integritaet)
     mapping = {
         "Material-Ermüdung": {"diag": "DIAGNOSE: ADHÄSIVER VERSCHLEISS", "exp": f"Gefüge-Ermüdung bei vc={vc}. {integ_detail}", "maint": f"Check der Freiflächen. {integ_text}", "act": f"REDUKTION: vc auf {int(vc*0.85)} m/min."},
         "Überlastung": {"diag": "DIAGNOSE: MECHANISCHE ÜBERLAST", "exp": f"Vorschub f={f} erzeugt {current_vals['d']:.1f}Nm. {integ_detail}", "maint": f"Check Aufnahme. {integ_text}", "act": f"KORREKTUR: f auf {f*0.7:.2f}mm/U begrenzen."},
-        "Gefüge-Überhitzung": {"diag": "DIAGNOSE: THERMISCHE ÜBERLAST", "exp": f"thermik ({current_vals['t']:.0f}°C). {integ_detail}", "maint": f"Check auf Kolkverschleiß. {integ_text}", "act": "KÜHLUNG: vc senken oder Druck erhöhen."},
+        "Gefüge-Überhitzung": {"diag": "DIAGNOSE: THERMISCHE ÜBERLAST", "exp": f"Temperatur ({current_vals['t']:.0f}°C). {integ_detail}", "maint": f"Check auf Kolkverschleiß. {integ_text}", "act": "KÜHLUNG: vc senken oder Druck erhöhen."},
         "Resonanz-Instabilität": {"diag": "DIAGNOSE: DYNAMISCHE INSTABILITÄT", "exp": f"Vibration {current_vals['v']:.2f}mm/s. {integ_detail}", "maint": f"Auskraglänge prüfen. {integ_text}", "act": f"SHIFT: vc auf {int(vc*0.9)} variieren."},
         "Kühlungs-Defizit": {"diag": "DIAGNOSE: TRIBOLOGIE-VERSAGEN", "exp": f"Schmierfilmabriss. {integ_detail}", "maint": f"Konzentration prüfen. {integ_text}", "act": "SYSTEMCHECK: Kühlung blockiert."},
         "Struktur-Vorschaden": {"diag": "DIAGNOSE: GEFÜGESCHADEN", "exp": f"Integrität {integritaet:.1f}%. {integ_detail}", "maint": f"Emissionsprüfung. {integ_text}", "act": "NOT-AUS: Wechsel einleiten."}
@@ -92,7 +92,7 @@ def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kueh
 
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
-    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'Temperatur': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
 
 MATERIALIEN = {"Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450}, "Vergütungsstahl": {"kc1.1": 2100, "mc": 0.25, "rate": 0.25, "t_crit": 550}, "Edelstahl": {"kc1.1": 2400, "mc": 0.22, "rate": 0.45, "t_crit": 650}, "Titan Grade 5": {"kc1.1": 2800, "mc": 0.24, "rate": 1.2, "t_crit": 750}}
 
@@ -130,7 +130,7 @@ m0.markdown(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><
 m1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
 m2.markdown(f'<div class="glass-card"><span class="val-title">Risiko (Bayes)</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
 m3.markdown(f'<div class="glass-card"><span class="val-title">Wartung</span><br><span class="val-main" style="color:#58a6ff">{s["rul"]} Z.</span></div>', unsafe_allow_html=True)
-m4.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
+m4.markdown(f'<div class="glass-card"><span class="val-title">Thermik</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
 m5.markdown(f'<div class="glass-card"><span class="val-title">Vibration (mm/s)</span><br><span class="val-main" style="color:#bc8cff">{max(0,s["vibration"]):.1f}</span></div>', unsafe_allow_html=True)
 m6.markdown(f'<div class="glass-card"><span class="val-title">Last (Nm)</span><br><span class="val-main">{s["drehmoment"]:.1f}</span></div>', unsafe_allow_html=True)
 
