@@ -179,7 +179,7 @@ with tab2:
         sim_last = st.slider("Sim. Last [Nm]", 0, 300, 40)
         sim_vibr = st.slider("Sim. Vibration [mm/s]", 0.0, 50.0, 5.0)
     with sc2:
-        sim_temp = st.slider("Sim. Hitze [°C]", 20, 1200, 150)
+        sim_temp = st.slider("Sim. Temp. [°C]", 20, 1200, 150)
         sim_integ = st.slider("Integrität [%]", 0, 100, 100)
         sim_kuehl = st.toggle("Sim. Kühlungs-Ausfall")
     with sc3:
