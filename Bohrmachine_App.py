@@ -73,11 +73,8 @@ def get_dynamic_expert_analysis(top_reason, current_vals, settings, integritaet)
 
 def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kuehlung_ausfall, integritaet):
     w = [1.2, 2.4, 3.8, 4.2, 4.5, 0.10]
-    # Roh-Scores
     raw_scores = np.array([alter * w[0], last * w[1], thermik * w[2], (vibration/10) * w[3], kuehlung_ausfall * w[4], (100 - integritaet) * w[5]])
-    
-    # NEU: Exponentielle Verstärkung (Softmax-Prinzip) für höhere KI-Sicherheit
-    exp_scores = np.exp(raw_scores * 0.8) # Faktor 0.8 steuert die Entschlossenheit
+    exp_scores = np.exp(raw_scores * 0.8) 
     probabilities = (exp_scores / exp_scores.sum()) * 100
     
     z = sum(raw_scores)
@@ -125,6 +122,7 @@ if s['active'] and not s['broken']:
 # --- 6. UI ---
 if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH</div>', unsafe_allow_html=True)
 
+# Korrektur der Spaltenzuweisung
 m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
 m0.markdown(f'<div class="glass-card"><span class="val-title">Vergangene Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
 m1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
@@ -184,6 +182,18 @@ with tab2:
         sim_kuehl = st.toggle("Sim. Kühlungs-Ausfall")
     with sc3:
         r_sim, evidenz_sim, rul_sim = calculate_metrics_bayesian(0.5, sim_alter/800, sim_last/50, sim_temp/500, sim_vibr, 1.0 if sim_kuehl else 0.0, sim_integ)
+        
+        # NEU: Anzeige der berechneten RUL im Szenario-Labor
+        st.markdown(f"""
+            <div class="glass-card" style="text-align: center; border: 2px solid #58a6ff;">
+                <span class="val-title">Voraussichtliche Restzyklen</span><br>
+                <span class="val-main" style="color:#58a6ff">{rul_sim} Zyklen</span>
+                <p style="font-size: 0.8rem; color: #8b949e; margin-top: 10px;">
+                    Berechnet auf Basis von Risiko-Posterior: {r_sim:.1%}
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+        
         fig_radar = go.Figure(data=go.Scatterpolar(r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*2, (100 if sim_kuehl else 0)], theta=['Alter','Last','Hitze','Vibration','Kühlung'], fill='toself', line=dict(color='#e3b341')))
         fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 100])), showlegend=False, height=300, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_radar, use_container_width=True)
