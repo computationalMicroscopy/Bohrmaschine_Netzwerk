@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & HIGH-READABILITY STYLING ---
-st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor Pro V3", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor Pro V3.1", page_icon="⚙️")
 
 st.markdown("""
     <style>
@@ -145,8 +145,8 @@ with st.sidebar:
     
     st.divider()
     st.header("📡 Sensor-Kalibrierung & Skalierung")
-    sensor_temp_gain = st.slider("Temperatursensor-Empfindlichkeit", 0.5, 2.5, 1.0, step=0.1, help="Simuliert Sensor-Drift oder falsche Kalibrierung.")
-    sensor_vibr_gain = st.slider("Vibrationssensor-Verstärkung (Gain)", 0.5, 3.0, 1.0, step=0.1, help="Verstärkt das ungefilterte Signal des Beschleunigungsaufnehmers.")
+    sensor_temp_gain = st.slider("Temperatursensor-Empfindlichkeit", 0.5, 2.5, 1.0, step=0.1)
+    sensor_vibr_gain = st.slider("Vibrationssensor-Verstärkung (Gain)", 0.5, 3.0, 1.0, step=0.1)
     
     st.divider()
     st.header("🎛️ Signalstörungen")
@@ -238,28 +238,37 @@ if s['active'] and not s['broken'] and not s['stall']:
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': exp_report, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'p': s['leistung'], 'm': s['drehmoment'], 'f': s['vorschubkraft']})
 
-# --- 6. HIGH-REALISMUS VISUELLES COCKPIT & BOHRER-NUTES-ANIMATION ---
+# --- 6. HIGH-REALISMUS VISUELLES COCKPIT & VALIDE CSS-PROZESSANIMATION ---
 if s['broken']:
     st.markdown('<div class="emergency-alert">💥 STRUKTURELLER WERKZEUGBRUCH! Schaft durch mechanische Überlast komplett zerstört.</div>', unsafe_allow_html=True)
 if s['stall']:
-    st.markdown('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme überschreitet maximales Drehmoment der Spindel (7.5 kW).</div>', unsafe_allow_html=True)
+    st.markdown('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme übersteigt maximales Drehmoment der Spindel (7.5 kW).</div>', unsafe_allow_html=True)
 
 col_animation, col_metrics = st.columns([1.2, 4])
 
 with col_animation:
-    # Berechnung des thermodynamischen Glüh-Effekts an der Schneidspitze
+    # Saubere, rein Python-basierte Farb-Interpolation für die Bohrer-Spitze (Vermeidung von ungültigem CSS-mix())
     t_val = s['thermik']
     if t_val < 150:
-        glow_style = "background: #555555;"  # Normaler Werkzeugstahl
+        target_color = "#555555"
+        glow_box = "none"
     elif t_val < 350:
-        # Beginnendes Anlaufen (Gelb-Orange-Stich)
-        glow_style = "background: mix(#555555, #ff6a00, 30%); box-shadow: 0 0 10px rgba(255, 106, 0, 0.4);"
+        # Sanfter Übergang zu warmem Metall-Braun/Anlauf-Orange
+        factor = (t_val - 150) / 200
+        r = int(85 + (120 - 85) * factor)
+        g = int(85 + (80 - 85) * factor)
+        b = int(85 + (40 - 85) * factor)
+        target_color = f"rgb({r},{g},{b})"
+        glow_box = f"0 0 {int(5 + 10*factor)}px rgba(255, 106, 0, 0.4)"
     else:
-        # Kritisches Glühen bis hellrot
-        ratio = min(1.0, (t_val - 350) / 350)
-        red = int(200 + (55 * ratio))
-        green = int(50 * ratio)
-        glow_style = f"background: rgb({red}, {green}, 0); box-shadow: 0 0 {int(15 + 25*ratio)}px rgba({red}, {green}, 0, 0.9);"
+        # Kritisches Glühen bis hin zu gleißendem Hellrot
+        factor = min(1.0, (t_val - 350) / 350)
+        r = int(200 + (55 * factor))
+        g = int(50 * factor)
+        target_color = f"rgb({r}, {g}, 0)"
+        glow_box = f"0 0 {int(15 + 25*factor)}px rgba({r}, {g}, 0, 0.9)"
+
+    glow_style = f"background: {target_color}; box-shadow: {glow_box};"
 
     # Dynamische Schwingungs- und Rotations-Zuweisung
     if s['broken']:
@@ -270,10 +279,8 @@ with col_animation:
         """
         status_label = "<span style='color:#ff7b72; font-weight:900;'>CRASH / BRUCH</span>"
     else:
-        # Frequenz der Nut-Rotation an Spindeldrehzahl gekoppelt
         spin_duration = f"{max(0.02, 45.0 / (s['drehzahl'] + 1)):.3f}s" if s['active'] else "0s"
         anim_spin = f"twist_effect {spin_duration} linear infinite" if s['active'] else "none"
-        # Schwingungs-Ausschlag gekoppelt an echten Vibrationswert
         shake_duration = f"{max(0.01, 0.1 / (s['vibration'] + 0.01)):.3f}s"
         anim_shake = f"severe_shake {shake_duration} infinite alternate" if s['active'] or s['stall'] else "none"
         
@@ -346,10 +353,9 @@ with t1:
             html_str += '</div>'
             st.markdown(html_str, unsafe_allow_html=True)
 
-# --- 8. WAS-WÄRE-WENN LABOR (MAXIMAL GROSSE DISPLAYS) ---
+# --- 8. WAS-WÄRE-WENN LABOR ---
 with t2:
     st.markdown("### 🧪 Labor-Simulationsraum für hypothetische Grenzbereiche")
-    st.markdown("Kopple hier gezielt spekulierte Maschineneinstellungen mit künstlichem Werkzeugverschleiß und manipulierten Sensor-Gains, um die Reaktion des KI-Modells zu testen.")
     
     col_inputs, col_outputs = st.columns([1, 1])
     
@@ -371,7 +377,6 @@ with t2:
     with col_outputs:
         st.subheader("📊 Berechnete physikalische Zielgrößen")
         
-        # Berechnung gekoppelt an die modifizierte Thermodynamik und Sensor-Drifts
         l_n = (lab_vc * 1000) / (np.pi * lab_d) if lab_d > 0 else 0
         l_h = (lab_f / 2.0)
         l_kc = lm['kc1.1'] * (l_h ** -lm['mc'])
@@ -387,7 +392,6 @@ with t2:
         c_t = 0.12 * (lab_d ** 3)
         c_f = 320 * (lab_d ** 2)
         
-        # Normalisierungen & Klassifikator-Scores
         l_norm_torque = l_torque / c_t
         l_norm_force = l_force / c_f
         l_norm_temp = l_temp / lm['t_crit']
@@ -414,7 +418,6 @@ with t2:
             lab_risk = 0.15 + (l_combined_score - 0.75) * 2.5
         lab_risk = np.clip(lab_risk, 0.01, 0.99)
         
-        # DISPLAY IM INSTRUMENTEN-STIL (1:1 GEKOPPELT & MAXIMAL GROSS)
         lc1, lc2 = st.columns(2)
         lc1.markdown(f'<div class="glass-card"><span class="val-title">Errechnetes Drehmoment</span><br><span class="val-main" style="color:#e3b341">{l_torque:.1f} Nm</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Bruch-Limit: {c_t:.1f} Nm</span></div>', unsafe_allow_html=True)
         lc2.markdown(f'<div class="glass-card"><span class="val-title">Errechnete Temperatur</span><br><span class="val-main" style="color:#ff7b72">{l_temp:.0f} °C</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Werkstoff-Erweichungs-Limit: {lm["t_crit"]} °C</span></div>', unsafe_allow_html=True)
