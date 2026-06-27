@@ -285,7 +285,7 @@ def compute_sensor_diagnostics(current_vals, settings, integrity, kuehlung, m):
         },
         "Abrasiver Freiflächenverschleiß (Normal)": {
             "diag": "ABRASIVE WEAR",
-            "exp": f"Fortschreitender Verschleiß durch harke Carbide im Material Gefüge. Restintegrität liegt bei {integrity:.1f}%.",
+            "exp": f"Fortschreitender Verschleiß durch harte Carbide im Material Gefüge. Restintegrität liegt bei {integrity:.1f}%.",
             "act": "STANDZEIT-MONITORING: Der Prozess läuft stabil. Werkzeugwechsel beim nächsten planmäßigen Wartungsfenster einplanen."
         },
         "Spindellager-Überlastung (Vibration resonant)": {
