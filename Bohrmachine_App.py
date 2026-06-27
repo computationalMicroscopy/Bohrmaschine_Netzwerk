@@ -482,7 +482,7 @@ with col_animation:
 
     st.html(f"""
         <div class="glass-card" style="padding: 20px; height: 100%; min-height: 340px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; background: #07090e; position: relative; overflow: hidden; border: 1px solid #21262d;">
-            <span class="val-title" style="color: #bc8cff; font-size:1.05rem;">Realtime-VFX-Spindel</span>
+            <span class="val-title" style="color: #bc8cff; font-size:1.05rem;">Bohrer - Animation</span>
             
             <div style="position: relative; display: flex; flex-direction: column; align-items: center; z-index:4;">
                 <div style="width: 76px; height: 30px; background: linear-gradient(90deg, #161b22 0%, #485260 50%, #161b22 100%); border-radius: 4px 4px 0 0; border: 1px solid #30363d;"></div>
