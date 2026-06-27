@@ -6,63 +6,64 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & HIGH-READABILITY STYLING ---
-st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor Pro", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor Pro V3", page_icon="⚙️")
 
 st.markdown("""
     <style>
-    /* Globaler Dark-Mode & Textskalierung für Präsentationsmonitore / Beamer */
+    /* Globaler Präsentations-Darkmode */
     .stApp { background-color: #0d1117; color: #c9d1d9; }
     
+    /* Extreme Lesbarkeit für Widgets & Regler */
     label, .stSlider, .stSelectbox, .stToggle { 
-        font-size: 1.3rem !important; 
+        font-size: 1.35rem !important; 
         font-weight: 700 !important; 
         color: #f0f6fc !important;
     }
-    .stMarkdown p { font-size: 1.2rem !important; line-height: 1.6; }
+    .stMarkdown p { font-size: 1.25rem !important; line-height: 1.6; }
     
     .main-title {
-        font-size: 2.8rem; font-weight: 800; color: #58a6ff;
-        margin-bottom: 25px; text-align: center; border-bottom: 2px solid #30363d; padding-bottom: 15px;
+        font-size: 3.0rem; font-weight: 800; color: #58a6ff;
+        margin-bottom: 25px; text-align: center; border-bottom: 3px solid #30363d; padding-bottom: 15px;
     }
     .glass-card {
-        background: #161b22; border: 1px solid #30363d;
-        border-radius: 12px; padding: 22px; margin-bottom: 12px; text-align: center;
+        background: #161b22; border: 2px solid #30363d;
+        border-radius: 14px; padding: 24px; margin-bottom: 12px; text-align: center;
     }
-    .val-title { font-size: 1.1rem; color: #8b949e; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
-    .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2.3rem; font-weight: 800; color: #f0f6fc; margin-top: 5px; display: block; }
+    .val-title { font-size: 1.15rem; color: #8b949e; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
+    .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2.5rem; font-weight: 800; color: #f0f6fc; margin-top: 5px; display: block; }
     
     /* XAI Diagnose-Karten */
-    .xai-container { height: 600px; overflow-y: auto; padding-right: 5px; }
+    .xai-container { height: 620px; overflow-y: auto; padding-right: 5px; }
     .xai-card {
-        background: #1f242c; border-left: 6px solid #58a6ff;
-        padding: 18px; border-radius: 8px; margin-bottom: 12px;
+        background: #1f242c; border-left: 7px solid #58a6ff;
+        padding: 20px; border-radius: 10px; margin-bottom: 14px;
     }
-    .xai-feature-row { display: flex; justify-content: space-between; font-size: 1.15rem; color: #c9d1d9; margin-top: 6px; font-weight: 500;}
-    .xai-bar-bg { background: #21262d; height: 10px; width: 100%; border-radius: 5px; margin-bottom: 8px; }
-    .xai-bar-fill { background: #58a6ff; height: 10px; border-radius: 5px; }
-    .reason-text { color: #f0f6fc; font-size: 1.3rem; margin-top: 6px; font-weight: 700; }
-    .sensor-snapshot { font-size: 1.05rem; color: #8b949e; margin-top: 6px; font-family: monospace; border-bottom: 1px solid #30363d; padding-bottom: 6px;}
-    .action-text { color: #ff7b72; font-weight: bold; font-size: 1.15rem; margin-top: 8px; border-top: 1px solid #30363d; padding-top: 8px; }
-    .diag-badge { background: #388bfd; color: #ffffff; padding: 4px 8px; border-radius: 4px; font-size: 13px; font-weight: 800; }
+    .xai-feature-row { display: flex; justify-content: space-between; font-size: 1.2rem; color: #c9d1d9; margin-top: 6px; font-weight: 500;}
+    .xai-bar-bg { background: #21262d; height: 12px; width: 100%; border-radius: 6px; margin-bottom: 8px; }
+    .xai-bar-fill { background: #58a6ff; height: 12px; border-radius: 6px; }
+    .reason-text { color: #f0f6fc; font-size: 1.35rem; margin-top: 6px; font-weight: 700; }
+    .sensor-snapshot { font-size: 1.1rem; color: #8b949e; margin-top: 6px; font-family: monospace; border-bottom: 1px solid #30363d; padding-bottom: 6px;}
+    .action-text { color: #ff7b72; font-weight: bold; font-size: 1.2rem; margin-top: 8px; border-top: 1px solid #30363d; padding-top: 8px; }
+    .diag-badge { background: #388bfd; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-size: 14px; font-weight: 800; }
     
     .emergency-alert {
-        background: #da3633; color: white; padding: 18px; border-radius: 8px; 
-        font-weight: bold; text-align: center; margin-bottom: 20px; font-size: 1.5rem;
+        background: #da3633; color: white; padding: 20px; border-radius: 10px; 
+        font-weight: bold; text-align: center; margin-bottom: 25px; font-size: 1.6rem;
     }
 
-    /* --- LIVE CSS BOHRER ANIMATIONSHILFEN --- */
-    @keyframes spin_kf {
+    /* --- ADVANCED REALISTIC DRILL ANIMATION KEYFRAMES --- */
+    @keyframes twist_effect {
         0% { background-position: 0px 0px; }
-        100% { background-position: 0px 80px; }
+        100% { background-position: 0px 120px; }
     }
-    @keyframes shake_kf {
-        0% { transform: translate(1px, 1px) rotate(0deg); }
-        100% { transform: translate(-1px, -1px) rotate(0.2deg); }
+    @keyframes severe_shake {
+        0% { transform: translate(1.5px, 0.5px) rotate(0.1deg); }
+        100% { transform: translate(-1.5px, -0.5px) rotate(-0.1deg); }
     }
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">Präzisions-Bohrerlabor & XAI-Zentrum (Calibrated Physics)</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🚀 Next-Gen KI-Zerspanungslabor & XAI-Plattform</div>', unsafe_allow_html=True)
 
 # --- 2. XAI ROOT-CAUSE ENGINE ---
 def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
@@ -74,9 +75,9 @@ def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
             "exp": f"Das Drehmoment ({current_vals['M']:.1f} Nm) überlastet den Schaftquerschnitt.", 
             "act": f"ABHILFE: Vorschub f auf {f*0.7:.2f} mm/U senken! Das Reduzieren von vc bringt hier physikalisch keine Entlastung."
         },
-        "Thermische Gefüge-Erweichung (Schneidkanten-Härteverlust durch Hitze)": {
+        "Thermische Gefüge-Erweichung (Schneidkanten-Härteverlust durch extreme Hitze)": {
             "diag": "THERMAL OVERLOAD", 
-            "exp": f"Schnittkantentemperatur ({current_vals['T']:.0f}°C) liegt im kritischen Bereich. Der Schneidstoff verliert seine Härte und verformt sich plastisch.", 
+            "exp": f"Schnittkantentemperatur ({current_vals['T']:.0f}°C) liegt im kritischen Bereich. Der Schneidstoff verliert durch Gefügeänderung seine Härte und verformt sich plastisch.", 
             "act": f"ABHILFE: Schnittgeschwindigkeit vc um 25% auf {int(vc*0.75)} m/min reduzieren, um Reibungsleistung zu senken."
         },
         "Regeneratives Rattern (Resonanz)": {
@@ -89,9 +90,9 @@ def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
             "exp": "Schmierung kollabiert. Spanflächenreibung steigt sprunghaft an, Spanfestklebung droht.", 
             "act": "NOT-STOPP: KSS-Zuleitung und Pumpendruck prüfen. Sofortiger Vorschubstopp zwingend."
         },
-        "Axiale Schaft-Knickung (Stabilitätsversagen durch Vorschubkraft)": {
+        "Axiale Schaft-Knickung (Stabilitätsversagen des Bohrers durch zu hohe Vorschubkraft)": {
             "diag": "AXIAL BUCKLED", 
-            "exp": f"Die Vorschubkraft ({current_vals['F']:.0f} N) überschreitet die elastische Stabilitätsgrenze. Der Bohrschaft weicht seitlich aus und bricht schlagartig.", 
+            "exp": f"Die Vorschubkraft ({current_vals['F']:.0f} N) überschreitet die elastische Stabilitätsgrenze (Euler-Knickung). Der lange Bohrschaft weicht elastisch seitlich aus und bricht schlagartig.", 
             "act": f"ABHILFE: Vorschub f sofort halbieren! Gefahr von irreversiblem Achsversatz oder Bohrer-Splitterung."
         },
         "Normaler Standzeit-Abrieb": {
@@ -104,13 +105,13 @@ def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
     res["snapshot"] = f"M: {current_vals['M']:.1f}Nm | T: {current_vals['T']:.0f}°C | V: {current_vals['V']:.1f}mm/s | F_f: {current_vals['F']:.0f}N"
     return res
 
-# --- 3. INITIALISIERUNG & WERKSTOFF-DATENBANK ---
+# --- 3. INITIALISIERUNG & STATE-MACHINE ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {
         'zyklus': 0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
         'thermik': 22.0, 'vibration': 0.2, 'integritaet': 100.0, 'risk': 0.0,
         'drehmoment': 0.0, 'leistung': 0.0, 'vorschubkraft': 0.0, 'abrasion': 0.0, 'drehzahl': 0.0,
-        'seed': np.random.RandomState(1337)
+        'seed': np.random.RandomState(42)
     }
 
 s = st.session_state.twin
@@ -124,10 +125,10 @@ MATERIALIEN = {
 
 LABELS = [
     "Mechanische Torsions-Überlast", 
-    "Thermische Gefüge-Erweichung (Schneidkanten-Härteverlust durch Hitze)", 
+    "Thermische Gefüge-Erweichung (Schneidkanten-Härteverlust durch extreme Hitze)", 
     "Regeneratives Rattern (Resonanz)", 
     "Kühlungs-Abriss (Adhäsion)", 
-    "Axiale Schaft-Knickung (Stabilitätsversagen durch Vorschubkraft)", 
+    "Axiale Schaft-Knickung (Stabilitätsversagen des Bohrers durch zu hohe Vorschubkraft)", 
     "Normaler Standzeit-Abrieb"
 ]
 
@@ -141,6 +142,11 @@ with st.sidebar:
     f = st.slider("Vorschub pro Umdrehung f [mm/U]", 0.05, 0.60, 0.15)
     d = st.slider("Bohrer-Durchmesser d [mm]", 5.0, 32.0, 12.0)
     kuehlung = st.toggle("Kühlschmierstoff (KSS) aktiv", value=True)
+    
+    st.divider()
+    st.header("📡 Sensor-Kalibrierung & Skalierung")
+    sensor_temp_gain = st.slider("Temperatursensor-Empfindlichkeit", 0.5, 2.5, 1.0, step=0.1, help="Simuliert Sensor-Drift oder falsche Kalibrierung.")
+    sensor_vibr_gain = st.slider("Vibrationssensor-Verstärkung (Gain)", 0.5, 3.0, 1.0, step=0.1, help="Verstärkt das ungefilterte Signal des Beschleunigungsaufnehmers.")
     
     st.divider()
     st.header("🎛️ Signalstörungen")
@@ -168,15 +174,15 @@ if s['active'] and not s['broken'] and not s['stall']:
     crit_torque = 0.12 * (d ** 3) 
     crit_force = 320 * (d ** 2)
     
-    # Thermodynamik (Realistische Erwärmung gekoppelt an Reibungsleistung)
+    # Thermodynamik mit Sensor-Gain-Kopplung
     p_friction_watts = s['drehmoment'] * (n * 2 * np.pi / 60.0)
     kss_factor = 4.2 if kuehlung else 0.9  
-    t_target = 22.0 + (p_friction_watts * 0.22) / kss_factor
+    t_target = 22.0 + ((p_friction_watts * 0.22) / kss_factor) * sensor_temp_gain
     s['thermik'] += (t_target - s['thermik']) * 0.15 
     
-    # Schwingungsverhalten
+    # Schwingungsverhalten mit Sensor-Gain-Kopplung
     chatter_trigger = 1.2 + (s['drehmoment'] * 0.12) if (int(n) % 400 < 60) else 0.25
-    s['vibration'] = max(0.1, chatter_trigger + s['seed'].normal(0, 0.1) * noise_level)
+    s['vibration'] = max(0.1, (chatter_trigger + s['seed'].normal(0, 0.1) * noise_level) * sensor_vibr_gain)
     
     # Normalisierungen
     norm_torque = s['drehmoment'] / crit_torque
@@ -232,47 +238,60 @@ if s['active'] and not s['broken'] and not s['stall']:
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': exp_report, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'p': s['leistung'], 'm': s['drehmoment'], 'f': s['vorschubkraft']})
 
-# --- 6. DYNAMISCHES VISUELLES COCKPIT & BOHRER-ANIMATION ---
+# --- 6. HIGH-REALISMUS VISUELLES COCKPIT & BOHRER-NUTES-ANIMATION ---
 if s['broken']:
-    st.markdown('<div class="emergency-alert">💥 STRUKTURELLER WERKZEUGBRUCH! Schaft durch Knickung/Torsion komplett zerstört.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="emergency-alert">💥 STRUKTURELLER WERKZEUGBRUCH! Schaft durch mechanische Überlast komplett zerstört.</div>', unsafe_allow_html=True)
 if s['stall']:
-    st.markdown('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme übersteigt maximales Drehmoment der Spindel (7.5 kW).</div>', unsafe_allow_html=True)
+    st.markdown('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme überschreitet maximales Drehmoment der Spindel (7.5 kW).</div>', unsafe_allow_html=True)
 
-# Spaltenaufteilung: Links die High-Tech Animation des Bohrers, Rechts das Anzeige-Cockpit
-col_animation, col_metrics = st.columns([1, 4])
+col_animation, col_metrics = st.columns([1.2, 4])
 
 with col_animation:
-    # Berechne optische Effekte basierend auf aktuellen Werten
-    heat_ratio = min(1.0, max(0.0, (s['thermik'] - 22) / 600))
-    glow_color = f"rgba(255, {int(150 * (1 - heat_ratio))}, 0, {heat_ratio * 0.95})"
-    
+    # Berechnung des thermodynamischen Glüh-Effekts an der Schneidspitze
+    t_val = s['thermik']
+    if t_val < 150:
+        glow_style = "background: #555555;"  # Normaler Werkzeugstahl
+    elif t_val < 350:
+        # Beginnendes Anlaufen (Gelb-Orange-Stich)
+        glow_style = "background: mix(#555555, #ff6a00, 30%); box-shadow: 0 0 10px rgba(255, 106, 0, 0.4);"
+    else:
+        # Kritisches Glühen bis hellrot
+        ratio = min(1.0, (t_val - 350) / 350)
+        red = int(200 + (55 * ratio))
+        green = int(50 * ratio)
+        glow_style = f"background: rgb({red}, {green}, 0); box-shadow: 0 0 {int(15 + 25*ratio)}px rgba({red}, {green}, 0, 0.9);"
+
+    # Dynamische Schwingungs- und Rotations-Zuweisung
     if s['broken']:
         anim_spin, anim_shake = "none", "none"
-        drill_css = "background: #331a1a; transform: rotate(35deg) translate(15px, 25px); border-radius: 4px; border: 2px dashed #ff7b72;"
-        status_label = "<span style='color:#ff7b72; font-weight:900;'>GEBROCHEN</span>"
-    elif s['stall']:
-        anim_spin = "none"
-        anim_shake = "shake_kf 0.04s infinite alternate"
-        drill_css = "background: #555; box-shadow: inset 0 0 35px rgba(255,0,0,0.9);"
-        status_label = "<span style='color:#e3b341; font-weight:900;'>STALL / BLOCKIERT</span>"
-    elif s['active']:
-        anim_spin = f"spin_kf {max(0.03, 30.0/(s['drehzahl'] + 1)):.3f}s linear infinite"
-        anim_shake = f"shake_kf {max(0.02, 0.15/(s['vibration'] + 0.1)):.3f}s infinite alternate"
-        drill_css = f"background: linear-gradient(45deg, #aaa 25%, #666 25%, #666 50%, #aaa 50%, #aaa 75%, #666 75%); background-size: 30px 35px; box-shadow: inset 0 -15px 45px {glow_color};"
-        status_label = "<span style='color:#2ea44f; font-weight:900;'>ROTATION AKTIV</span>"
+        body_render = """
+            <div style="width: 45px; height: 60px; background: #444; margin-left: 10px; transform: rotate(-20deg); border-bottom: 2px dashed red;"></div>
+            <div style="width: 45px; height: 60px; background: #333; margin-top: 15px; margin-left: -20px; transform: rotate(45deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
+        """
+        status_label = "<span style='color:#ff7b72; font-weight:900;'>CRASH / BRUCH</span>"
     else:
-        anim_spin, anim_shake = "none", "none"
-        drill_css = "background: linear-gradient(45deg, #aaa 25%, #666 25%, #666 50%, #aaa 50%, #aaa 75%, #666 75%); background-size: 30px 35px;"
-        status_label = "<span style='color:#8b949e;'>READY / STANDBY</span>"
+        # Frequenz der Nut-Rotation an Spindeldrehzahl gekoppelt
+        spin_duration = f"{max(0.02, 45.0 / (s['drehzahl'] + 1)):.3f}s" if s['active'] else "0s"
+        anim_spin = f"twist_effect {spin_duration} linear infinite" if s['active'] else "none"
+        # Schwingungs-Ausschlag gekoppelt an echten Vibrationswert
+        shake_duration = f"{max(0.01, 0.1 / (s['vibration'] + 0.01)):.3f}s"
+        anim_shake = f"severe_shake {shake_duration} infinite alternate" if s['active'] or s['stall'] else "none"
+        
+        body_render = f"""
+            <div style="animation: {anim_spin}; width: 45px; height: 110px; background: linear-gradient(120deg, #777 20%, #222 35%, #888 50%, #222 65%, #666 80%); background-size: 45px 40px; box-shadow: inset 2px 0 10px rgba(0,0,0,0.5); border-radius: 0 0 2px 2px;"></div>
+            <div style="{glow_style} width: 45px; height: 22px; clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px; transition: all 0.2s;"></div>
+        """
+        status_label = "<span style='color:#2ea44f; font-weight:900;'>ROTATION LIVE</span>" if s['active'] else "<span style='color:#8b949e;'>STANDBY</span>"
+        if s['stall']: status_label = "<span style='color:#e3b341; font-weight:900;'>STALL / BLOCKIERT</span>"
 
     st.markdown(f"""
-        <div class="glass-card" style="padding: 15px; height: 100%; min-height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-            <span class="val-title" style="margin-bottom: 8px;">Spindel-Twin</span>
-            <div style="width: 70px; height: 35px; background: #30363d; border-radius: 6px 6px 0 0; border: 1px solid #444;"></div>
-            <div style="animation: {anim_shake}; width: 100%; display: flex; justify-content: center;">
-                <div style="width: 32px; height: 110px; {drill_css} animation: {anim_spin}; border-radius: 0 0 12px 12px; transition: background 0.2s;"></div>
+        <div class="glass-card" style="padding: 16px; height: 100%; min-height: 250px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #12161f;">
+            <span class="val-title" style="margin-bottom: 10px; color: #58a6ff;">Spindel-Monitor</span>
+            <div style="width: 75px; height: 40px; background: linear-gradient(to right, #333, #555, #333); border-radius: 6px 6px 0 0; border: 1px solid #444; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
+            <div style="animation: {anim_shake}; width: 100%; display: flex; flex-direction: column; align-items: center;">
+                {body_render}
             </div>
-            <div style="margin-top: 12px; font-size: 1.1rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">{status_label}</div>
+            <div style="margin-top: 15px; font-size: 1.15rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.7px; background: #161b22; padding: 4px 12px; border-radius: 6px; border: 1px solid #30363d;">{status_label}</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -327,10 +346,10 @@ with t1:
             html_str += '</div>'
             st.markdown(html_str, unsafe_allow_html=True)
 
-# --- 8. RESTAURIERTES WAS-WÄRE-WENN LABOR (MAXIMAL LESBAR) ---
+# --- 8. WAS-WÄRE-WENN LABOR (MAXIMAL GROSSE DISPLAYS) ---
 with t2:
     st.markdown("### 🧪 Labor-Simulationsraum für hypothetische Grenzbereiche")
-    st.markdown("Kopple hier gezielt spekulierte Maschineneinstellungen mit künstlichem Werkzeugverschleiß, um die Reaktion des KI-Bruchrisikos exakt zu analysieren.")
+    st.markdown("Kopple hier gezielt spekulierte Maschineneinstellungen mit künstlichem Werkzeugverschleiß und manipulierten Sensor-Gains, um die Reaktion des KI-Modells zu testen.")
     
     col_inputs, col_outputs = st.columns([1, 1])
     
@@ -352,7 +371,7 @@ with t2:
     with col_outputs:
         st.subheader("📊 Berechnete physikalische Zielgrößen")
         
-        # Berechnung (Gekoppelt an die kalibrierte Thermodynamik)
+        # Berechnung gekoppelt an die modifizierte Thermodynamik und Sensor-Drifts
         l_n = (lab_vc * 1000) / (np.pi * lab_d) if lab_d > 0 else 0
         l_h = (lab_f / 2.0)
         l_kc = lm['kc1.1'] * (l_h ** -lm['mc'])
@@ -363,7 +382,7 @@ with t2:
         
         l_p_friction = l_torque * (l_n * 2 * np.pi / 60.0)
         l_kss_fac = 4.2 if lab_kss else 0.9  
-        l_temp = 22.0 + (l_p_friction * 0.22) / l_kss_fac
+        l_temp = (22.0 + (l_p_friction * 0.22) / l_kss_fac) * sensor_temp_gain
         
         c_t = 0.12 * (lab_d ** 3)
         c_f = 320 * (lab_d ** 2)
@@ -372,7 +391,7 @@ with t2:
         l_norm_torque = l_torque / c_t
         l_norm_force = l_force / c_f
         l_norm_temp = l_temp / lm['t_crit']
-        l_norm_vibr = lab_vibr_override / 8.0
+        l_norm_vibr = (lab_vibr_override * sensor_vibr_gain) / 8.0
         l_kss_loss = 1.0 if not lab_kss else 0.0
         l_norm_wear = (100.0 - lab_integ) / 100.0
         
@@ -386,7 +405,6 @@ with t2:
         l_probs = (l_exp / l_exp.sum()) * 100
         l_evidenz = sorted(zip(LABELS, l_probs), key=lambda x: x[1], reverse=True)
         
-        # Risiko-Kopplung
         l_max_stress = max([l_norm_torque, l_norm_force, l_norm_temp, l_norm_vibr])
         l_combined_score = l_max_stress + (l_norm_wear ** 2.0) * 0.95
         
@@ -396,19 +414,19 @@ with t2:
             lab_risk = 0.15 + (l_combined_score - 0.75) * 2.5
         lab_risk = np.clip(lab_risk, 0.01, 0.99)
         
-        # DISPLAY IM INSTRUMENTEN-STIL (RESTAURIERT & MAXIMAL GROSS)
+        # DISPLAY IM INSTRUMENTEN-STIL (1:1 GEKOPPELT & MAXIMAL GROSS)
         lc1, lc2 = st.columns(2)
-        lc1.markdown(f'<div class="glass-card"><span class="val-title">Errechnetes Drehmoment</span><br><span class="val-main" style="color:#e3b341">{l_torque:.1f} Nm</span><br><span style="font-size:1.05rem;color:#8b949e;font-weight:bold;">Bruch-Limit: {c_t:.1f} Nm</span></div>', unsafe_allow_html=True)
-        lc2.markdown(f'<div class="glass-card"><span class="val-title">Errechnete Temperatur</span><br><span class="val-main" style="color:#ff7b72">{l_temp:.0f} °C</span><br><span style="font-size:1.05rem;color:#8b949e;font-weight:bold;">Werkstoff-Erweichungs-Limit: {lm["t_crit"]} °C</span></div>', unsafe_allow_html=True)
+        lc1.markdown(f'<div class="glass-card"><span class="val-title">Errechnetes Drehmoment</span><br><span class="val-main" style="color:#e3b341">{l_torque:.1f} Nm</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Bruch-Limit: {c_t:.1f} Nm</span></div>', unsafe_allow_html=True)
+        lc2.markdown(f'<div class="glass-card"><span class="val-title">Errechnete Temperatur</span><br><span class="val-main" style="color:#ff7b72">{l_temp:.0f} °C</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Werkstoff-Erweichungs-Limit: {lm["t_crit"]} °C</span></div>', unsafe_allow_html=True)
         
         lc3, lc4 = st.columns(2)
-        lc3.markdown(f'<div class="glass-card"><span class="val-title">Erwartete Spindellast</span><br><span class="val-main" style="color:#58a6ff">{l_power:.2f} kW</span><br><span style="font-size:1.05rem;color:#8b949e;font-weight:bold;">Max. Motorleistung: 7.5 kW</span></div>', unsafe_allow_html=True)
-        lc4.markdown(f'<div class="glass-card"><span class="val-title">Errechnete Vorschubkraft</span><br><span class="val-main" style="color:#1f6feb">{l_force:.0f} N</span><br><span style="font-size:1.05rem;color:#8b949e;font-weight:bold;">Knick-Limit: {c_f:.0f} N</span></div>', unsafe_allow_html=True)
+        lc3.markdown(f'<div class="glass-card"><span class="val-title">Erwartete Spindellast</span><br><span class="val-main" style="color:#58a6ff">{l_power:.2f} kW</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Max. Motorleistung: 7.5 kW</span></div>', unsafe_allow_html=True)
+        lc4.markdown(f'<div class="glass-card"><span class="val-title">Errechnete Vorschubkraft</span><br><span class="val-main" style="color:#1f6feb">{l_force:.0f} N</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Knick-Limit: {c_f:.0f} N</span></div>', unsafe_allow_html=True)
         
         st.markdown(f"""
             <div class="glass-card" style="border: 3px solid #58a6ff; margin-top:15px; background: #1f242c;">
-                <span class="val-title" style="font-size:1.3rem;">Präzisiertes KI-Bruchrisiko:</span><br>
-                <span class="val-main" style="color:#ff7b72; font-size:3.2rem; margin-top:8px;">{lab_risk:.1%}</span>
+                <span class="val-title" style="font-size:1.35rem;">Präzisiertes KI-Bruchrisiko:</span><br>
+                <span class="val-main" style="color:#ff7b72; font-size:3.4rem; margin-top:8px;">{lab_risk:.1%}</span>
             </div>
         """, unsafe_allow_html=True)
         
@@ -425,13 +443,13 @@ with t2:
 st.divider()
 b1, b2 = st.columns(2)
 if b1.button("▶ SIMULATION STARTEN / PAUSIEREN", use_container_width=True):
-    s['active'] = not s['active']
+    st.session_state.twin['active'] = not st.session_state.twin['active']
 if b2.button("🔄 NEUES WERKZEUG EINSPANNEN (RESET)", use_container_width=True):
     st.session_state.twin = {
         'zyklus': 0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
         'thermik': 22.0, 'vibration': 0.2, 'integritaet': 100.0, 'risk': 0.0,
         'drehmoment': 0.0, 'leistung': 0.0, 'vorschubkraft': 0.0, 'abrasion': 0.0, 'drehzahl': 0.0,
-        'seed': np.random.RandomState(1337)
+        'seed': np.random.RandomState(42)
     }
     st.rerun()
 
