@@ -538,7 +538,7 @@ with t1:
             st.plotly_chart(fig, use_container_width=True)
             
     with col_log:
-        st.markdown("### 👁️ Sensorbasierte KI-Ursachendiagnose (XAI)")
+        st.markdown("### Sensorbasierte KI-Ursachendiagnose (XAI)")
         if s['logs']:
             html_str = '<div class="xai-container">'
             for l in s['logs'][:10]:
