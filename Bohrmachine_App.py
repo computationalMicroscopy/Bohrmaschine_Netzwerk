@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & HIGH-END INDUSTRIAL STYLING ---
-st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor TwinPro V4.5", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI-Zerspanungs-Plattform TwinPro V5.0", page_icon="⚙️")
 
 st.html("""
     <style>
@@ -14,7 +14,7 @@ st.html("""
     
     /* Globaler Next-Gen Darkmode */
     .stApp { 
-        background-color: #080b10; 
+        background-color: #06090e; 
         color: #c9d1d9;
         font-family: 'Inter', sans-serif;
     }
@@ -39,15 +39,15 @@ st.html("""
     
     /* High-Tech Cockpit Cards */
     .glass-card {
-        background: rgba(22, 27, 34, 0.7); 
-        border: 1px solid rgba(48, 54, 61, 0.8);
+        background: rgba(16, 22, 30, 0.85); 
+        border: 1px solid rgba(48, 54, 61, 0.9);
         border-radius: 12px; padding: 20px; margin-bottom: 15px; text-align: center;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 25px rgba(0,0,0,0.3);
         transition: all 0.3s ease;
     }
     .glass-card:hover {
-        border-color: rgba(88, 166, 255, 0.4);
-        box-shadow: 0 4px 25px rgba(88, 166, 255, 0.1);
+        border-color: rgba(88, 166, 255, 0.5);
+        box-shadow: 0 4px 30px rgba(88, 166, 255, 0.15);
     }
     .val-title { font-size: 1.05rem; color: #8b949e; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; }
     .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2.3rem; font-weight: 800; color: #f0f6fc; margin-top: 5px; display: block; }
@@ -55,9 +55,9 @@ st.html("""
     /* XAI Diagnose-Karten */
     .xai-container { height: 600px; overflow-y: auto; padding-right: 5px; }
     .xai-card {
-        background: #11151c; border-left: 6px solid #58a6ff;
+        background: #0d1117; border-left: 6px solid #58a6ff;
         padding: 18px; border-radius: 8px; margin-bottom: 12px;
-        border-top: 1px solid rgba(255,255,255,0.03);
+        border-top: 1px solid rgba(255,255,255,0.02);
     }
     .xai-feature-row { display: flex; justify-content: space-between; font-size: 1.1rem; color: #c9d1d9; margin-top: 6px; font-weight: 500;}
     .xai-bar-bg { background: #21262d; height: 8px; width: 100%; border-radius: 4px; margin-bottom: 8px; overflow:hidden;}
@@ -74,46 +74,63 @@ st.html("""
         border: 1px solid #f85149;
     }
 
-    /* --- ULTIMATE HIGH-REALISM ANIMATION KEYFRAMES --- */
+    /* --- CINEMATIC ANIMATION KEYFRAMES --- */
     @keyframes helical_spin {
         0% { background-position: 0px 0px, 0px 0px; }
-        100% { background-position: 0px -160px, 0px 0px; }
+        100% { background-position: 0px -180px, 0px 0px; }
     }
     @keyframes tool_feed {
-        0% { transform: translateY(-6px); }
-        50% { transform: translateY(12px); }
-        100% { transform: translateY(-6px); }
+        0% { transform: translateY(-15px); }
+        45% { transform: translateY(22px); } /* Maximale Schnitttiefe */
+        55% { transform: translateY(22px); }
+        100% { transform: translateY(-15px); } /* Spanentleerung / Rückzug */
     }
     @keyframes industrial_shake {
-        0% { transform: translate(0.3px, 0.3px) rotate(0.03deg); }
-        50% { transform: translate(-0.6px, 0.1px) rotate(-0.03deg); }
-        100% { transform: translate(0.3px, -0.4px) rotate(0.02deg); }
+        0% { transform: translate(0.4px, 0.4px) rotate(0.04deg); }
+        50% { transform: translate(-0.8px, 0.2px) rotate(-0.04deg); }
+        100% { transform: translate(0.4px, -0.6px) rotate(0.02deg); }
     }
     @keyframes chip_spray_left {
-        0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
-        80% { opacity: 0.8; }
-        100% { transform: translate(-70px, -40px) scale(0.1) rotate(-360deg); opacity: 0; }
+        0% { transform: translate(0, 0) scale(1.2) rotate(0deg); opacity: 1; }
+        80% { opacity: 0.9; }
+        100% { transform: translate(-85px, -50px) scale(0.1) rotate(-540deg); opacity: 0; }
     }
     @keyframes chip_spray_right {
-        0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
-        80% { opacity: 0.8; }
-        100% { transform: translate(70px, -40px) scale(0.1) rotate(360deg); opacity: 0; }
+        0% { transform: translate(0, 0) scale(1.2) rotate(0deg); opacity: 1; }
+        80% { opacity: 0.9; }
+        100% { transform: translate(85px, -50px) scale(0.1) rotate(540deg); opacity: 0; }
     }
     @keyframes smoke_rise {
-        0% { transform: translate(-50%, -5px) scale(0.6); opacity: 0; }
-        40% { opacity: 0.3; }
-        100% { transform: translate(-50%, -60px) scale(3.0); opacity: 0; }
+        0% { transform: translate(-50%, 0px) scale(0.5); opacity: 0; }
+        30% { opacity: 0.4; filter: blur(4px); }
+        100% { transform: translate(-50%, -75px) scale(3.5); opacity: 0; filter: blur(8px); }
     }
-    @keyframes kss_flow_left {
-        0% { transform: translate(-40px, -60px) scaleX(1) rotate(45deg); opacity: 0.8; }
-        100% { transform: translate(-4px, -5px) scaleX(0.2) rotate(45deg); opacity: 1; }
+    @keyframes kss_flood_left {
+        0% { transform: translate(-45px, -65px) scaleY(1) rotate(40deg); opacity: 0.7; }
+        100% { transform: translate(-3px, -2px) scaleX(0.3) rotate(40deg); opacity: 1; }
     }
-    @keyframes kss_flow_right {
-        0% { transform: translate(40px, -60px) scaleX(1) rotate(-45deg); opacity: 0.8; }
-        100% { transform: translate(4px, -5px) scaleX(0.2) rotate(-445deg); opacity: 1; }
+    @keyframes kss_flood_right {
+        0% { transform: translate(45px, -65px) scaleY(1) rotate(-40deg); opacity: 0.7; }
+        100% { transform: translate(3px, -2px) scaleX(0.3) rotate(-40deg); opacity: 1; }
+    }
+    @keyframes kss_mist {
+        0% { transform: translate(-50%, -10px) scale(0.8); opacity: 0.3; }
+        50% { opacity: 0.6; }
+        100% { transform: translate(-50%, -30px) scale(1.8); opacity: 0; }
+    }
+    @keyframes led_pulse {
+        0% { box-shadow: 0 0 8px var(--led-color), inset 0 0 4px var(--led-color); }
+        50% { box-shadow: 0 0 22px var(--led-color), inset 0 0 10px var(--led-color); }
+        100% { box-shadow: 0 0 8px var(--led-color), inset 0 0 4px var(--led-color); }
+    }
+    @keyframes strobe_crit {
+        0%, 100% { background: #ff0000; box-shadow: 0 0 25px #ff0000; }
+        50% { background: #200000; box-shadow: 0 0 2px #200000; }
     }
     </style>
 """)
+
+st.html('<div class="main-title">🚀 Next-Gen KI-Zerspanungslabor & XAI-Plattform</div>')
 
 # --- 2. XAI ROOT-CAUSE ENGINE ---
 def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
@@ -158,7 +175,7 @@ def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
 # --- 3. INITIALISIERUNG & STATE-MACHINE ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {
-        'zyklus': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
+        'zyklus': 0.0, 'zyklen_anzahl': 0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
         'thermik': 22.0, 'vibration': 0.2, 'integritaet': 100.0, 'risk': 0.0,
         'drehmoment': 0.0, 'leistung': 0.0, 'vorschubkraft': 0.0, 'abrasion': 0.0, 'drehzahl': 0.0,
         'seed': np.random.RandomState(42)
@@ -206,13 +223,19 @@ with st.sidebar:
     schrittweite = st.number_input("Zeitskalierungsfaktor", 1, 20, 5)
     taktzeit = st.select_slider("Aktualisierungsintervall (ms)", options=[500, 200, 100, 0], value=100)
 
-# --- 5. PHYSIK-ENGINE (REAL-TIME ADAPTED) ---
+# --- 5. PHYSIK-ENGINE ---
 n = (vc * 1000) / (np.pi * d) if d > 0 else 0
 s['drehzahl'] = n
 
 if s['active'] and not s['broken'] and not s['stall']:
     dt = (taktzeit / 1000.0 if taktzeit > 0 else 0.05) * schrittweite
-    s['zyklus'] += dt # Akkumuliert reale Schnittsekunden
+    
+    # Präzise Zyklen-Synchronisation basierend auf der CSS-Animationsdauer (2.5 Sekunden pro Loch)
+    altes_zeitfenster = int(s['zyklus'] / 2.5)
+    s['zyklus'] += dt 
+    neues_zeitfenster = int(s['zyklus'] / 2.5)
+    if neues_zeitfenster > altes_zeitfenster:
+        s['zyklen_anzahl'] += 1  # Ein kompletter Hub beendet -> Zähler inkrementiert!
     
     h = (f / 2.0)
     kc = m['kc1.1'] * (h ** -m['mc'])
@@ -282,119 +305,129 @@ if s['active'] and not s['broken'] and not s['stall']:
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': exp_report, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'p': s['leistung'], 'm': s['drehmoment'], 'f': s['vorschubkraft']})
 
-# --- 6. VISUELLES HIGH-FIDELITY UPGRADE ---
+# --- 6. CRASH-DETEKTION ---
 if s['broken']:
     st.html('<div class="emergency-alert">💥 STRUKTURELLER WERKZEUGBRUCH! Schaft durch mechanische Überlast komplett zerstört.</div>')
 if s['stall']:
-    st.html('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme überschreitet maximales Drehmoment der Spindel (7.5 kW).</div>')
+    st.html('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme übersteigt maximales Drehmoment der Spindel (7.5 kW).</div>')
 
-col_animation, col_metrics = st.columns([1.4, 4])
+col_animation, col_metrics = st.columns([1.5, 4])
 
 with col_animation:
     t_val = s['thermik']
     integ_val = s['integritaet']
     
-    # Thermischer Gradient & Verschleiß-Überlagerung an der Spitze
+    # 1. Bestimmung des LED-Statusring-Farbwerts
+    if s['broken'] or s['stall']:
+        led_style = "animation: strobe_crit 0.2s infinite;"
+    elif not s['active']:
+        led_style = "background: #555; box-shadow: 0 0 5px #333; --led-color: #555;"
+    else:
+        if s['risk'] > 0.7:
+            color, hex_val = "rgba(255, 68, 0, 1)", "#ff4400"
+        elif kuehlung:
+            color, hex_val = "rgba(0, 180, 255, 1)", "#00b4ff"
+        else:
+            color, hex_val = "rgba(46, 164, 79, 1)", "#2ea44f"
+        led_style = f"background: {hex_val}; --led-color: {color}; animation: led_pulse 1s infinite ease-in-out;"
+
+    # 2. Thermisches Glühen der Schneidenspitze
     if t_val < 150:
         tip_base = "#555555"
         glow_effect = "rgba(0,0,0,0)"
     elif t_val < 380:
         factor = (t_val - 150) / 230
-        r = int(85 + (165 - 85) * factor)
-        g = int(85 + (65 - 85) * factor)
-        b = int(85 + (20 - 85) * factor)
-        tip_base = f"rgb({r},{g},{b})"
-        glow_effect = f"0 8px 20px rgba(255, 90, 0, {0.25 * factor})"
+        tip_base = f"rgb({int(85+80*factor)},{int(85-20*factor)},{int(85-65*factor)})"
+        glow_effect = f"0 8px 20px rgba(255, 90, 0, {0.3 * factor})"
     else:
         factor = min(1.0, (t_val - 380) / 320)
-        r = int(165 + (90 * factor))
-        g = int(65 * (1.0 - factor))
-        tip_base = f"rgb({r}, {g}, 0)"
-        glow_effect = f"0 8px 25px rgba({r}, {g}, 0, {0.4 + 0.5 * factor})"
+        tip_base = f"rgb({int(165+90*factor)}, {int(65*(1.0-factor))}, 0)"
+        glow_effect = f"0 8px 30px rgba({int(165+90*factor)}, {int(65*(1.0-factor))}, 0, {0.5 + 0.4 * factor})"
 
-    # Mischung aus Hitze und mechanischer Graufärbung/Abnutzung
+    # 3. Mechanischer Verschleiß & Brandflecken-Überlagerung
     wear_factor = (100.0 - integ_val) / 100.0
-    if not s['broken']:
-        # Blende progressiv Brandspuren/Verschleiß ein
-        tip_color = f"linear-gradient(to bottom, #444 0%, {tip_base} 70%, rgba(20,20,20,{wear_factor:.2f}) 100%)"
-    else:
-        tip_color = "#222"
+    tip_color = f"linear-gradient(to bottom, #444 0%, {tip_base} 65%, rgba(15,15,15,{wear_factor:.2f}) 100%)" if not s['broken'] else "#1a1a1a"
 
-    # Partikel- und KSS-Injektionen
+    # 4. Glühende Verformungszone des Werkstücks (Eintrittsloch)
+    surface_glow = f"rgba(255, 60, 0, {min(0.9, (t_val-100)/500)})" if t_val > 100 else "rgba(0,0,0,0)"
+
+    # 5. Partikeleffekte & Aerosol-Fluten
     extra_fx = ""
     if s['active']:
-        # Metallspäne-Flug
         extra_fx += f"""
-        <div style="position: absolute; left: 8px; bottom: 35px; width: 6px; height: 4px; background: {m['color']}; border-radius:2px; animation: chip_spray_left 0.12s infinite linear;"></div>
-        <div style="position: absolute; right: 8px; bottom: 35px; width: 5px; height: 3px; background: {m['color']}; border-radius:1px; animation: chip_spray_right 0.10s infinite linear; animation-delay: 0.04s;"></div>
+        <div style="position: absolute; left: 8px; bottom: 35px; width: 6px; height: 4px; background: {m['color']}; border-radius:2px; animation: chip_spray_left 0.1s infinite linear;"></div>
+        <div style="position: absolute; right: 8px; bottom: 35px; width: 5px; height: 3px; background: {m['color']}; border-radius:1px; animation: chip_spray_right 0.09s infinite linear; animation-delay: 0.03s;"></div>
         """
-        # Kühlmittelstrahlen (falls aktiv)
         if kuehlung:
             extra_fx += """
-            <div style="position: absolute; width: 3px; height: 70px; background: rgba(180, 230, 255, 0.6); border-radius: 2px; filter: blur(1px); animation: kss_flow_left 0.15s infinite linear;"></div>
-            <div style="position: absolute; width: 3px; height: 70px; background: rgba(180, 230, 255, 0.6); border-radius: 2px; filter: blur(1px); animation: kss_flow_right 0.15s infinite linear;"></div>
+            <div style="position: absolute; width: 3px; height: 75px; background: rgba(180, 240, 255, 0.7); filter: blur(0.5px); animation: kss_flood_left 0.12s infinite linear; transform-origin: top left;"></div>
+            <div style="position: absolute; width: 3px; height: 75px; background: rgba(180, 240, 255, 0.7); filter: blur(0.5px); animation: kss_flood_right 0.12s infinite linear; transform-origin: top right;"></div>
+            <div style="position: absolute; left: 50%; bottom: 32px; width: 30px; height: 15px; background: rgba(200, 235, 255, 0.15); filter: blur(4px); border-radius: 50%; animation: kss_mist 0.25s infinite ease-out;"></div>
             """
-        # Qualm & glühende Funken bei Hitze
-        if t_val > 250:
+        if t_val > 220:
+            extra_fx += '<div style="position: absolute; left: 50%; bottom: 35px; width: 18px; height: 18px; background: rgba(240,240,240,0.15); filter: blur(7px); border-radius: 50%; animation: smoke_rise 0.3s infinite linear;"></div>'
+        if t_val > 420:
             extra_fx += """
-            <div style="position: absolute; left: 50%; bottom: 35px; width: 16px; height: 16px; background: rgba(230,230,230,0.12); filter: blur(6px); border-radius: 50%; animation: smoke_rise 0.35s infinite linear;"></div>
-            """
-        if t_val > 400:
-            extra_fx += """
-            <div style="position: absolute; left: 15px; bottom: 35px; width: 3px; height: 3px; background: #ffaa00; box-shadow:0 0 4px #ff4400; border-radius:50%; animation: chip_spray_left 0.07s infinite linear;"></div>
-            <div style="position: absolute; right: 15px; bottom: 35px; width: 3px; height: 3px; background: #ffcc00; box-shadow:0 0 4px #ff4400; border-radius:50%; animation: chip_spray_right 0.06s infinite linear;"></div>
+            <div style="position: absolute; left: 12px; bottom: 35px; width: 3px; height: 3px; background: #ffcc00; box-shadow:0 0 5px #ff3300; border-radius:50%; animation: chip_spray_left 0.05s infinite linear;"></div>
+            <div style="position: absolute; right: 12px; bottom: 35px; width: 3px; height: 3px; background: #fffa00; box-shadow:0 0 5px #ff3300; border-radius:50%; animation: chip_spray_right 0.05s infinite linear;"></div>
             """
 
-    # Dynamische Zuweisung von Drehzahl-Frequenz & Vibrationen
+    # 6. Kinetik-Zuweisung
     if s['broken']:
         anim_spin, anim_shake, anim_feed = "none", "none", "none"
         drill_render = """
-        <div style="width: 44px; height: 60px; background: #3a3a3a; transform: translate(14px, -5px) rotate(-30deg); border-bottom: 3px dashed #ff3333; box-shadow: inset 3px 0 10px rgba(0,0,0,0.6);"></div>
-        <div style="width: 44px; height: 50px; background: #1a1a1a; transform: translate(-18px, 20px) rotate(55deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%); border: 1px solid #333;"></div>
+        <div style="width: 44px; height: 60px; background: #2f2f2f; transform: translate(16px, -3px) rotate(-32deg); border-bottom: 4px dashed #ff2222; box-shadow: inset 4px 0 10px rgba(0,0,0,0.7);"></div>
+        <div style="width: 44px; height: 50px; background: #111; transform: translate(-20px, 18px) rotate(60deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
         """
         status_label = "<span style='color:#ff7b72; font-weight:900;'>CRASH / BRUCH</span>"
     else:
-        spin_duration = f"{max(0.012, 50.0 / (s['drehzahl'] + 1)):.3f}s" if s['active'] else "0s"
+        spin_duration = f"{max(0.010, 45.0 / (s['drehzahl'] + 1)):.3f}s" if s['active'] else "0s"
         anim_spin = f"helical_spin {spin_duration} linear infinite" if s['active'] else "none"
-        shake_duration = f"{max(0.006, 0.07 / (s['vibration'] + 0.01)):.3f}s"
+        shake_duration = f"{max(0.005, 0.06 / (s['vibration'] + 0.01)):.3f}s"
         anim_shake = f"industrial_shake {shake_duration} infinite linear" if s['active'] or s['stall'] else "none"
         anim_feed = "tool_feed 2.5s infinite ease-in-out" if s['active'] else "none"
         
         drill_render = f"""
         <div style="animation: {anim_spin}; width: 44px; height: 115px; 
-                    background: linear-gradient(to right, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 25%, rgba(0,0,0,0.5) 75%, rgba(0,0,0,0.8) 100%),
-                                repeating-linear-gradient(135deg, #15191e 0px, #15191e 12px, #444 16px, #888 22px, #444 26px, #15191e 38px); 
-                    background-size: 100% 100%, 100% 45px; box-shadow: inset 4px 0 10px rgba(0,0,0,0.7); border-radius: 0 0 1px 1px;"></div>
+                    background: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 20%, rgba(0,0,0,0.4) 70%, rgba(0,0,0,0.7) 100%),
+                                linear-gradient(to right, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%),
+                                repeating-linear-gradient(135deg, #12161b 0px, #12161b 12px, #3a3a3a 16px, #777 22px, #3a3a3a 26px, #12161b 38px); 
+                    background-size: 100% 100%, 100% 100%, 100% 45px; box-shadow: inset 4px 0 10px rgba(0,0,0,0.75);"></div>
         <div style="background: {tip_color}; box-shadow: {glow_effect}; width: 44px; height: 21px; 
-                    clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px; transition: background 0.15s;"></div>
+                    clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px;"></div>
         """
         status_label = "<span style='color:#2ea44f; font-weight:900;'>ROTATION LIVE</span>" if s['active'] else "<span style='color:#8b949e;'>STANDBY</span>"
         if s['stall']: status_label = "<span style='color:#e3b341; font-weight:900;'>STALL / BLOCKIERT</span>"
 
     st.html(f"""
-        <div class="glass-card" style="padding: 20px; height: 100%; min-height: 310px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; background: #0b0e14; position: relative; overflow: hidden;">
-            <span class="val-title" style="color: #58a6ff; font-size:1.05rem;">Spindel-Zerspanungsraum</span>
+        <div class="glass-card" style="padding: 20px; height: 100%; min-height: 330px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; background: #07090e; position: relative; overflow: hidden; border: 1px solid #21262d;">
+            <span class="val-title" style="color: #bc8cff; font-size:1.05rem;">Realtime-VFX-Spindel</span>
             
-            <div style="width: 75px; height: 32px; background: linear-gradient(90deg, #1c212b 0%, #5c6673 50%, #1c212b 100%); border-radius: 4px 4px 0 0; border: 1px solid #30363d; box-shadow: 0 3px 8px rgba(0,0,0,0.5); z-index:2;"></div>
+            <div style="position: relative; display: flex; flex-direction: column; align-items: center; z-index:4;">
+                <div style="width: 76px; height: 30px; background: linear-gradient(90deg, #161b22 0%, #485260 50%, #161b22 100%); border-radius: 4px 4px 0 0; border: 1px solid #30363d;"></div>
+                <div style="{led_style} width: 66px; height: 6px; margin-top: -1px; border-radius: 0 0 2px 2px; transition: all 0.3s;"></div>
+            </div>
             
-            <div style="animation: {anim_feed}; width: 100%; display: flex; flex-direction: column; align-items: center; z-index:1;">
+            <div style="animation: {anim_feed}; width: 100%; display: flex; flex-direction: column; align-items: center; z-index:2;">
                 <div style="animation: {anim_shake}; display: flex; flex-direction: column; align-items: center; position: relative;">
                     {drill_render}
                     {extra_fx}
                 </div>
             </div>
             
-            <div style="width: 115%; height: 25px; background: linear-gradient(180deg, {m['color']} 0%, #0d1117 100%); border-top: 2px solid rgba(255,255,255,0.15); border-radius: 3px; z-index: 3; margin-top:-2px; display:flex; justify-content:center;">
-                <div style="width: 16px; height: 8px; background: rgba(0,0,0,0.6); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
+            <div style="width: 115%; height: 26px; background: linear-gradient(180deg, {m['color']} 0%, #080a0f 100%); border-top: 2px solid rgba(255,255,255,0.15); border-radius: 2px; z-index: 3; margin-top:-2px; display:flex; justify-content:center; position: relative;">
+                <div style="position: absolute; top: -3px; width: 22px; height: 5px; background: {surface_glow}; filter: blur(2px); border-radius: 50%; box-shadow: 0 0 8px {surface_glow}; transition: background 0.2s;"></div>
+                <div style="width: 16px; height: 7px; background: rgba(0,0,0,0.7); clip-path: polygon(0% 0%, 100% 0%, 50% 100%); z-index: 5;"></div>
             </div>
             
-            <div style="margin-top: 10px; font-size: 1.05rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.8px; background: #161b22; padding: 5px 16px; border-radius: 20px; border: 1px solid #30363d; text-align:center; min-width:150px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);">{status_label}</div>
+            <div style="margin-top: 8px; font-size: 1.05rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.8px; background: #12161f; padding: 4px 16px; border-radius: 20px; border: 1px solid #21262d; text-align:center; min-width:150px;">{status_label}</div>
         </div>
     """)
 
 # --- 7. UX-DASHBOARD-KPI PANELS ---
 with col_metrics:
-    c0, c1, c2, c3, c4, c5 = st.columns(6)
+    c_cyc, c0, c1, c2, c3, c4 = st.columns(6)
+    c_cyc.html(f'<div class="glass-card" style="border: 1px solid #bc8cff; background: rgba(188,140,255,0.03);"><span class="val-title" style="color:#bc8cff;">Bohrzyklen</span><br><span class="val-main" style="color:#bc8cff;">{s["zyklen_anzahl"]}</span></div>')
     c0.html(f'<div class="glass-card"><span class="val-title">Schnittzeit tc</span><br><span class="val-main" style="color:#58a6ff">{s["zyklus"]:.1f} <span style="font-size:16px">s</span></span></div>')
     
     i_color = "#2ea44f" if s['integritaet'] > 50 else ("#e3b341" if s['integritaet'] > 20 else "#f85149")
@@ -408,8 +441,6 @@ with col_metrics:
     
     v_color = "#58a6ff" if s['vibration'] < 2.5 else ("#e3b341" if s['vibration'] < 5.5 else "#f85149")
     c4.html(f'<div class="glass-card"><span class="val-title">Schwingung</span><br><span class="val-main" style="color:{v_color}">{s["vibration"]:.2f} <span style="font-size:14px">mm/s</span></span></div>')
-    
-    c5.html(f'<div class="glass-card"><span class="val-title">Drehmoment</span><br><span class="val-main" style="color:#bc8cff">{s["drehmoment"]:.1f} <span style="font-size:16px">Nm</span></span></div>')
 
 # --- 8. TABS: LIVE TRENDS VS SCENARIO LAB ---
 t1, t2 = st.tabs(["📈 Echtzeit-Telemetrie & Oszilloskop", "🔬 Prädiktives Was-Wäre-Wenn Simulationslabor"])
@@ -549,7 +580,7 @@ if b1.button("▶ SIMULATION STARTEN / PAUSIEREN", use_container_width=True):
     st.session_state.twin['active'] = not st.session_state.twin['active']
 if b2.button("🔄 NEUES WERKZEUG EINSPANNEN (RESET)", use_container_width=True):
     st.session_state.twin = {
-        'zyklus': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
+        'zyklus': 0.0, 'zyklen_anzahl': 0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
         'thermik': 22.0, 'vibration': 0.2, 'integritaet': 100.0, 'risk': 0.0,
         'drehmoment': 0.0, 'leistung': 0.0, 'vorschubkraft': 0.0, 'abrasion': 0.0, 'drehzahl': 0.0,
         'seed': np.random.RandomState(42)
