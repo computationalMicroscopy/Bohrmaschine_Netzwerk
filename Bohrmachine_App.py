@@ -101,7 +101,7 @@ MATERIALIEN = {
     "Edelstahl (1.4301)": {"kc1.1": 2300, "mc": 0.22, "wear_factor": 0.12, "t_crit": 600}
 }
 
-# Global verfügbarer Fehlerklassen-Vektor für beide Anwendungslayer
+# Fehlerklassen global definiert zur Vermeidung von Scope-Fehlern
 LABELS = [
     "Mechanische Torsions-Überlast", 
     "Thermische Gefüge-Erweichung", 
@@ -120,7 +120,7 @@ with st.sidebar:
     vc = st.slider("vc: Schnittgeschwindigkeit [m/min]", 30, 350, 100)
     f = st.slider("f: Vorschub [mm/U]", 0.05, 0.60, 0.15)
     d = st.slider("d: Werkzeugdurchmesser [mm]", 5.0, 32.0, 12.0)
-    kuehlung = st.toggle("Kühlschmierstoff (KSS) active", value=True)
+    kuehlung = st.toggle("Kühlschmierstoff (KSS) aktiv", value=True)
     
     st.divider()
     st.header("🎛️ Sensor-Rauschen & Gain")
@@ -130,73 +130,74 @@ with st.sidebar:
     schrittweite = st.number_input("Zyklen pro Rechenschritt", 5, 100, 20)
     taktzeit = st.select_slider("Taktung (ms)", options=[500, 200, 100, 0], value=100)
 
-# --- 5. DETILLIERTE PHYSIK-ENGINE ---
+# --- 5. DETILLIERTE PHYSIK-ENGINE (LIVE-PROZESS) ---
 if s['active'] and not s['broken'] and not s['stall']:
     s['zyklus'] += schrittweite
     
     # 5.1 Kinetik & Drehzahl
-    n = (vc * 1000) / (np.pi * d) # U/min
+    n = (vc * 1000) / (np.pi * d)
     
-    # 5.2 Kienzle-Berechnung mit korrekter Spanungsdicke h = f/2 (2-schneidiger Bohrer)
+    # 5.2 Kienzle-Berechnung
     h = (f / 2.0)
     kc = m['kc1.1'] * (h ** -m['mc'])
     
-    # Physikalisch reale Kräfte (Skalierung proportional zu Durchmesser und Spanungsfläche)
-    s['drehmoment'] = (f * (d**2) * kc) / 8000.0  # Nm
-    s['vorschubkraft'] = (0.5 * d * f * kc) * 1.3  # N
-    s['leistung'] = (s['drehmoment'] * n) / 9550.0  # kW
+    s['drehmoment'] = (f * (d**2) * kc) / 8000.0  
+    s['vorschubkraft'] = (0.5 * d * f * kc) * 1.3  
+    s['leistung'] = (s['drehmoment'] * n) / 9550.0  
     
     # 5.3 Durchmesser-abhängige kritische Belastungsgrenzen
     crit_torque = 0.12 * (d ** 3) 
     crit_force = 320 * (d ** 2)
     
-    # 5.4 Thermodynamik (Reibungsleistung vs Konvektion)
+    # 5.4 Thermodynamik (PT1-Glied)
     p_friction_watts = s['drehmoment'] * (n * 2 * np.pi / 60.0)
     kss_factor = 25.0 if kuehlung else 2.5
     t_target = 22.0 + (p_friction_watts * 0.02) / kss_factor
-    s['thermik'] += (t_target - s['thermik']) * 0.15 # Thermisches PT1-Glied
+    s['thermik'] += (t_target - s['thermik']) * 0.15 
     
-    # 5.5 Schwingungs-Modell (Regeneratives Rattern gekoppelt an Schnittkraft)
+    # 5.5 Schwingungs-Modell (Regeneratives Rattern)
     chatter_trigger = 1.0 + (s['drehmoment'] * 0.1) if (int(n) % 400 < 60) else 0.2
     s['vibration'] = max(0.1, chatter_trigger + s['seed'].normal(0, 0.1) * noise_level)
     
-    # 5.6 Feature-Normalisierung für die XAI-Engine (0.0 = sicher, >1.0 = Zerstörung)
+    # 5.6 Feature-Normalisierung für die XAI-Engine
     norm_torque = s['drehmoment'] / crit_torque
     norm_force = s['vorschubkraft'] / crit_force
     norm_temp = s['thermik'] / m['t_crit']
     norm_vibr = s['vibration'] / 8.0
     kss_loss = 1.0 if not kuehlung else 0.0
+    norm_wear = (100.0 - s['integritaet']) / 100.0
     
     # 5.7 Mathematisch fundiertes Bayes/Klassifikator-Netzwerk
-    weights = [3.0, 3.5, 2.5, 4.0, 3.0, 1.5]
+    weights = [3.0, 3.5, 2.5, 4.0, 3.0, 3.5] # Verschleiß-Gewichtung erhöht für stärkere XAI-Präsenz
     scores = np.array([
         norm_torque * weights[0],
         norm_temp * weights[1],
         norm_vibr * weights[2],
         kss_loss * weights[3],
         norm_force * weights[4],
-        (s['abrasion'] / 100.0) * weights[5]
+        norm_wear * weights[5]
     ])
     
-    # Softmax zur Verteilung der Verdachtsmomente
     exp_s = np.exp(scores - np.max(scores))
     probabilities = (exp_s / exp_s.sum()) * 100
     evidenz_list = sorted(zip(LABELS, probabilities), key=lambda x: x[1], reverse=True)
     
-    # Aggregiertes Bruchrisiko spiegelt den maximalen Stresszustand wider
+    # --- DIDAKTISCH KORRIGIERTE RISIKO-KOPPLUNG ---
     max_stress = max([norm_torque, norm_force, norm_temp, norm_vibr])
-    if max_stress < 0.75:
-        s['risk'] = max_stress * 0.15 
+    # Progressiver Risikoaufschlag durch akkumulierten Verschleiß
+    combined_risk_score = max_stress + (norm_wear ** 2.0) * 0.95
+    
+    if combined_risk_score < 0.75:
+        s['risk'] = combined_risk_score * 0.20  
     else:
-        s['risk'] = 0.15 + (max_stress - 0.75) * 3.4 
+        s['risk'] = 0.15 + (combined_risk_score - 0.75) * 2.5
     s['risk'] = np.clip(s['risk'], 0.01, 0.99)
     
-    # 5.8 Degradation (Verschleißfortschritt & Strukturschaden)
+    # 5.8 Degradation (Verschleißfortschritt)
     v_factor = (vc / 120.0) ** 1.5
     thermal_accelerator = np.exp(max(0.0, s['thermik'] - m['t_crit']) / 30.0)
     s['abrasion'] += (m['wear_factor'] * v_factor * f * thermal_accelerator) * (schrittweite / 10.0)
     
-    # Akkumulierter mechanischer Ermüdungsschaden (nur bei echtem Stress!)
     fatigue = 0.0
     if norm_torque > 0.85: fatigue += (norm_torque - 0.85) ** 2
     if norm_force > 0.85: fatigue += (norm_force - 0.85) ** 2
@@ -205,18 +206,15 @@ if s['active'] and not s['broken'] and not s['stall']:
     total_wear_increment = ((s['abrasion'] * 0.002) + fatigue) * schrittweite
     s['integritaet'] = max(0.0, s['integritaet'] - total_wear_increment)
     
-    # 5.9 Maschinenspezifische Abschaltgrenzen (Motorleistung-Limit = 7.5 kW)
     if s['leistung'] > 7.5:
         s['stall'] = True
         s['active'] = False
     
-    # Realistisches Brechen bei Totalüberlastung
     if s['integritaet'] <= 0.0 or norm_torque > 1.15 or norm_force > 1.2 or (norm_temp > 1.1 and s['drehmoment'] > crit_torque * 0.5):
         s['broken'] = True
         s['active'] = False
         s['integritaet'] = 0.0
     
-    # Logs schreiben
     exp_report = get_expert_diagnostics(evidenz_list[0][0], {'M': s['drehmoment'], 'T': s['thermik'], 'V': s['vibration'], 'F': s['vorschubkraft']}, {'vc': vc, 'f': f, 'd': d}, s['integritaet'])
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': exp_report, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'p': s['leistung'], 'm': s['drehmoment'], 'f': s['vorschubkraft']})
@@ -236,8 +234,8 @@ c4.markdown(f'<div class="glass-card"><span class="val-title">Vibration</span><b
 c5.markdown(f'<div class="glass-card"><span class="val-title">Drehmoment</span><br><span class="val-main" style="color:#e3b341">{s["drehmoment"]:.1f} Nm</span></div>', unsafe_allow_html=True)
 c6.markdown(f'<div class="glass-card"><span class="val-title">Leistung</span><br><span class="val-main" style="color:#58a6ff">{s["leistung"]:.2f} kW</span></div>', unsafe_allow_html=True)
 
-# --- 7. GRAPHICS & DETAILED XAI ---
-t1, t2 = st.tabs(["... Echtzeit-Zustand & Trends", "... Physikalische Merkmals-Evidenz"])
+# --- 7. TABS: ECHTZEIT VS WAS-WÄRE-WENN LABOR ---
+t1, t2 = st.tabs(["📈 Echtzeit-Zustand & Trends", "🔬 Interaktives Was-Wäre-Wenn Labor"])
 
 with t1:
     col_graph, col_log = st.columns([2, 1])
@@ -259,7 +257,7 @@ with t1:
             st.info("Simulation starten, um Telemetriedaten aufzuzeichnen.")
             
     with col_log:
-        st.markdown("###  XAI: Ursachen-Diagnose")
+        st.markdown("### 👁️ XAI: Ursachen-Diagnose")
         if s['logs']:
             html_str = '<div class="xai-container">'
             for l in s['logs'][:10]:
@@ -278,36 +276,100 @@ with t1:
             html_str += '</div>'
             st.markdown(html_str, unsafe_allow_html=True)
 
+# --- RESTAURIERTES UND OPTIMIERTES WAS-WÄRE-WENN LABOR ---
 with t2:
-    st.markdown("###  Statischer Modell-Stresstest (Laborraum)")
-    sl1, sl2, sl3 = st.columns(3)
-    with sl1:
-        st_d = st.slider("Labor-Durchmesser [mm]", 5.0, 32.0, 12.0)
-        st_torque = st.slider("Labor-Drehmoment [Nm]", 0.0, 150.0, 20.0)
-    with sl2:
-        st_force = st.slider("Labor-Axialkraft [N]", 0, 7000, 1500)
-        st_temp = st.slider("Labor-Temperatur [°C]", 22, 800, 150)
-    with sl3:
-        st_vibr = st.slider("Labor-Vibration [mm/s]", 0.0, 15.0, 1.5)
-        st_kss = st.toggle("Labor: KSS ausgefallen", value=False)
-        
-    # Validierung im Laborraum mit den globalen LABELS
-    c_t = 0.12 * (st_d ** 3)
-    c_f = 320 * (st_d ** 2)
-    l_scores = np.array([
-        (st_torque / c_t) * 3.0, (st_temp / 550.0) * 3.5, (st_vibr / 8.0) * 2.5,
-        (1.0 if st_kss else 0.0) * 4.0, (st_force / c_f) * 3.0, 0.0
-    ])
-    l_exp = np.exp(l_scores - np.max(l_scores))
-    l_probs = (l_exp / l_exp.sum()) * 100
-    l_evidenz = sorted(zip(LABELS, l_probs), key=lambda x: x[1], reverse=True)
+    st.markdown("### 🧪 Was-Wäre-Wenn Szenarien-Sandbox")
+    st.markdown("Verändere die Parameter völlig autark vom echten Prozess, um zu prüfen, wie die KI in Grenzsituationen oder bei simuliertem Werkzeugverschleiß entscheiden würde.")
     
-    st.markdown(f"""
-        <div class="glass-card" style="border: 1px solid #58a6ff; margin-top:15px;">
-            <span class="val-title">KI-Klassifikation für Labor-Eingangswerte:</span><br>
-            <span class="val-main" style="color:#58a6ff">{l_evidenz[0][0]} ({l_evidenz[0][1]:.1f}% Konfidenz)</span>
-        </div>
-    """, unsafe_allow_html=True)
+    col_inputs, col_outputs = st.columns([1, 1])
+    
+    with col_inputs:
+        st.subheader("Hypothetische Stellgrößen")
+        lab_mat = st.selectbox("Labor-Werkstoff", list(MATERIALIEN.keys()), key="lab_mat")
+        lm = MATERIALIEN[lab_mat]
+        
+        lab_vc = st.slider("Labor vc [m/min]", 30, 350, 100, key="lab_vc")
+        lab_f = st.slider("Labor f [mm/U]", 0.05, 0.60, 0.15, key="lab_f")
+        lab_d = st.slider("Labor d [mm]", 5.0, 32.0, 12.0, key="lab_d")
+        lab_kss = st.toggle("Labor: KSS aktiv", value=True, key="lab_kss")
+        
+        st.divider()
+        st.subheader("Simulierter Werkzeugzustand")
+        lab_integ = st.slider("Virtuelle Integrität des Bohrers (%)", 0.0, 100.0, 100.0, key="lab_integ")
+        lab_vibr_override = st.slider("Manuelle Schwingungsüberlagerung [mm/s]", 0.1, 15.0, 0.4, key="lab_vibr")
+
+    with col_outputs:
+        st.subheader("Physikalische Labor-Berechnung")
+        
+        # Exakte Spiegelung der kalibrierten Physik-Engine für Steady-State
+        l_n = (lab_vc * 1000) / (np.pi * lab_d)
+        l_h = (lab_f / 2.0)
+        l_kc = lm['kc1.1'] * (l_h ** -lm['mc'])
+        
+        l_torque = (lab_f * (lab_d**2) * l_kc) / 8000.0
+        l_force = (0.5 * lab_d * lab_f * l_kc) * 1.3
+        l_power = (l_torque * l_n) / 9550.0
+        
+        l_p_friction = l_torque * (l_n * 2 * np.pi / 60.0)
+        l_kss_fac = 25.0 if lab_kss else 2.5
+        l_temp = 22.0 + (l_p_friction * 0.02) / l_kss_fac
+        
+        c_t = 0.12 * (lab_d ** 3)
+        c_f = 320 * (lab_d ** 2)
+        
+        # Normalisierungen
+        l_norm_torque = l_torque / c_t
+        l_norm_force = l_force / c_f
+        l_norm_temp = l_temp / lm['t_crit']
+        l_norm_vibr = lab_vibr_override / 8.0
+        l_kss_loss = 1.0 if not lab_kss else 0.0
+        l_norm_wear = (100.0 - lab_integ) / 100.0
+        
+        # KI-Scores
+        l_weights = [3.0, 3.5, 2.5, 4.0, 3.0, 3.5]
+        l_scores = np.array([
+            l_norm_torque * l_weights[0], l_norm_temp * l_weights[1], l_norm_vibr * l_weights[2],
+            l_kss_loss * l_weights[3], l_norm_force * l_weights[4], l_norm_wear * l_weights[5]
+        ])
+        
+        l_exp = np.exp(l_scores - np.max(l_scores))
+        l_probs = (l_exp / l_exp.sum()) * 100
+        l_evidenz = sorted(zip(LABELS, l_probs), key=lambda x: x[1], reverse=True)
+        
+        # Risiko-Kopplung
+        l_max_stress = max([l_norm_torque, l_norm_force, l_norm_temp, l_norm_vibr])
+        l_combined_score = l_max_stress + (l_norm_wear ** 2.0) * 0.95
+        
+        if l_combined_score < 0.75:
+            lab_risk = l_combined_score * 0.20
+        else:
+            lab_risk = 0.15 + (l_combined_score - 0.75) * 2.5
+        lab_risk = np.clip(lab_risk, 0.01, 0.99)
+        
+        # Visualisierung im Laborraum
+        lc1, lc2 = st.columns(2)
+        lc1.metric("Errechnetes Moment", f"{l_torque:.1f} Nm", delta=f"Limit: {c_t:.1f} Nm", delta_color="inverse")
+        lc2.metric("Errechnete Temperatur", f"{l_temp:.0f} °C", delta=f"Kritisch: {lm['t_crit']} °C", delta_color="inverse")
+        
+        lc3, lc4 = st.columns(2)
+        lc3.metric("Spindellast", f"{l_power:.2f} kW", delta="Max: 7.5 kW", delta_color="inverse")
+        lc4.metric("Vorschubkraft", f"{l_force:.0f} N", delta=f"Limit: {c_f:.0f} N", delta_color="inverse")
+        
+        st.markdown(f"""
+            <div class="glass-card" style="border: 2px solid #58a6ff; margin-top:15px; background: #1f242c;">
+                <span class="val-title">KI-Prognose Bruchrisiko:</span><br>
+                <span class="val-main" style="color:#ff7b72; font-size:2rem;">{lab_risk:.1%}</span>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("### 🔬 Prädizierte KI-Urachengewichtung:")
+        html_bars = ""
+        for name, prob in l_evidenz[:4]:
+            html_bars += f"""
+            <div class="xai-feature-row" style="margin-top:8px;"><span>{name}</span><span>{prob:.1f}%</span></div>
+            <div class="xai-bar-bg" style="height:8px;"><div class="xai-bar-fill" style="width:{prob}%; height:8px;"></div></div>
+            """
+        st.markdown(html_bars, unsafe_allow_html=True)
 
 # --- 8. SIMULATION RUNTIME CONTROLS ---
 st.divider()
