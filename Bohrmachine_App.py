@@ -26,15 +26,6 @@ MATERIALIEN = {
     "Edelstahl (1.4301)": {"kc1.1": 2300, "mc": 0.22, "wear_factor": 0.038, "t_crit": 600, "color": "#a0aec0"}
 }
 
-LABELS = [
-    "Mechanische Torsions-Überlast", 
-    "Thermische Gefüge-Erweichung (Schneidkanten-Härteverlust durch extreme Hitze)", 
-    "Regeneratives Rattern (Resonanz)", 
-    "Kühlungs-Abriss (Adhäsion)", 
-    "Axiale Schaft-Knickung (Stabilitätsversagen des Bohrers durch zu hohe Vorschubkraft)", 
-    "Normaler Standzeit-Abrieb"
-]
-
 # --- SIDEBAR CONTROL PANEL ---
 with st.sidebar:
     st.header("⚙️ Live-Prozessparameter")
@@ -56,7 +47,7 @@ with st.sidebar:
     noise_level = st.slider("Rausch-Amplitude (Vibration)", 0.1, 2.0, 0.5)
 
 # DYNAMISCHE ANIMATIONS-ZEITBERECHNUNG (Verhindert den Stroboskop-Effekt)
-basis_zyklus_zeit = 2.5 # Sekunden für einen Standard-Bohrhub
+basis_zyklus_zeit = 2.5 
 dynamische_animations_dauer = max(0.05, basis_zyklus_zeit / schrittweite)
 
 st.html(f"""
@@ -181,44 +172,152 @@ st.html(f"""
 
 st.html('<div class="main-title">🚀 Next-Gen KI-Zerspanungslabor & XAI-Plattform</div>')
 
-# --- XAI ROOT-CAUSE ENGINE ---
-def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
+# --- 2. DETERMINISTISCHE REAL-SENSOR KI DIAGNOSE ENGINE ---
+def compute_sensor_diagnostics(current_vals, settings, integrity, kuehlung, m):
+    M, T, V, F = current_vals['M'], current_vals['T'], current_vals['V'], current_vals['F']
     vc, f, d = settings['vc'], settings['f'], settings['d']
+    
+    crit_torque = 0.12 * (d ** 3) 
+    crit_force = 320 * (d ** 2)
+    t_crit = m['t_crit']
+    
+    # 15+ Hochpräzise deterministische Zerspanungszustände
+    evidenz = {
+        "Mechanische Torsions-Überlast": 0.0,
+        "Thermische Gefüge-Erweichung": 0.0,
+        "Regeneratives Rattern (Resonanz)": 0.0,
+        "Aufbauschneidenbildung (Adhäsion)": 0.0,
+        "Axiale Schaft-Knickung (Vorschub zu hoch)": 0.0,
+        "Kühlungs-Abriss (Thermoschock-Gefahr)": 0.0,
+        "Spanstau / Spanflächen-Verstopfung": 0.0,
+        "Mikro-Bröckelung der Schneidkante": 0.0,
+        "Schnittdaten-Unterforderung (Kaltverfestigung)": 0.0,
+        "Abrasiver Freiflächenverschleiß (Normal)": 0.0,
+        "Spindellager-Überlastung (Vibration resonant)": 0.0,
+        "Extrem-Vorschub-Stauchung": 0.0,
+        "Kratzender Schnitt (Zentrierfehler)": 0.0,
+        "KSS-Verdampfung (Kavitation)": 0.0,
+        "Erhöhte Reibung durch Verschleißmarkenbreite": 0.0
+    }
+    
+    # Physikalische Scoring-Logiken basierend auf den exakten Sensor-Interaktionen
+    if M > crit_torque * 0.85:
+        evidenz["Mechanische Torsions-Überlast"] = min(100.0, (M / crit_torque) * 100.0)
+    if T > t_crit * 0.85:
+        evidenz["Thermische Gefüge-Erweichung"] = min(100.0, (T / t_crit) * 100.0)
+    if V > 5.0:
+        evidenz["Regeneratives Rattern (Resonanz)"] = min(100.0, (V / 8.0) * 100.0)
+    if vc < 60 and f > 0.12 and T < 200:
+        evidenz["Aufbauschneidenbildung (Adhäsion)"] = 85.0 + (f * 20.0)
+    if F > crit_force * 0.85:
+        evidenz["Axiale Schaft-Knickung (Vorschub zu hoch)"] = min(100.0, (F / crit_force) * 100.0)
+    if not kuehlung and T > 180:
+        evidenz["Kühlungs-Abriss (Thermoschock-Gefahr)"] = min(100.0, (T / 250.0) * 60.0 + 40.0)
+    if M > crit_torque * 0.7 and V > 4.0:
+        evidenz["Spanstau / Spanflächen-Verstopfung"] = 75.0
+    if V > 6.0 and integrity < 60:
+        evidenz["Mikro-Bröckelung der Schneidkante"] = 80.0
+    if vc > 150 and f < 0.08:
+        evidenz["Schnittdaten-Unterforderung (Kaltverfestigung)"] = 70.0
+    if integrity < 85:
+        evidenz["Abrasiver Freiflächenverschleiß (Normal)"] = (100.0 - integrity)
+    if V > 7.0 and M < crit_torque * 0.4:
+        evidenz["Spindellager-Überlastung (Vibration resonant)"] = 90.0
+    if f > 0.45:
+        evidenz["Extrem-Vorschub-Stauchung"] = 85.0
+    if F > crit_force * 0.6 and M < crit_torque * 0.3:
+        evidenz["Kratzender Schnitt (Zentrierfehler)"] = 65.0
+    if kuehlung and T > 100:
+        evidenz["KSS-Verdampfung (Kavitation)"] = min(95.0, (T / 100.0) * 45.0)
+    if integrity < 40 and M > crit_torque * 0.6:
+        evidenz["Erhöhte Reibung durch Verschleißmarkenbreite"] = 75.0
+
+    # Sortieren nach Stärke der Indikation
+    sorted_evidenz = sorted(evidenz.items(), key=lambda x: x[1], reverse=True)
+    top_reason = sorted_evidenz[0][0]
+    
+    # Zuweisung hochrealistischer Industrie-Handlungsempfehlungen
     mapping = {
         "Mechanische Torsions-Überlast": {
-            "diag": "CRITICAL TORQUE", 
-            "exp": f"Das Drehmoment ({current_vals['M']:.1f} Nm) überlastet den Schaftquerschnitt.", 
-            "act": f"ABHILFE: Vorschub f auf {f*0.7:.2f} mm/U senken!"
+            "diag": "CRITICAL TORQUE",
+            "exp": f"Das gemessene Drehmoment von {M:.1f} Nm übersteigt die Scherspannungsgrenze des Bohrers.",
+            "act": f"MINDERN SIE DEN VORSCHUB: Reduzieren Sie f sofort um 30% auf {f*0.7:.2f} mm/U. Ein Senken von vc entlastet die Torsion nicht!"
         },
-        "Thermische Gefüge-Erweichung (Schneidkanten-Härteverlust durch extreme Hitze)": {
-            "diag": "THERMAL OVERLOAD", 
-            "exp": f"Schnittkantentemperatur ({current_vals['T']:.0f}°C) liegt im kritischen Bereich.", 
-            "act": f"ABHILFE: Schnittgeschwindigkeit vc um 25% auf {int(vc*0.75)} m/min reduzieren."
+        "Thermische Gefüge-Erweichung": {
+            "diag": "THERMAL OVERLOAD",
+            "exp": f"Die Schnittkantentemperatur ({T:.0f}°C) hat die Anlasstemperatur des Schneidstoffs überschritten. Akute Härteerweichung!",
+            "act": f"REDUZIEREN SIE DIE REIBUNGSLEISTUNG: Schnittgeschwindigkeit vc um 25% auf {int(vc*0.75)} m/min drosseln und KSS-Volumenstrom erhöhen."
         },
         "Regeneratives Rattern (Resonanz)": {
-            "diag": "RESONANT CHATTER", 
-            "exp": f"Starke Vibrationsamplitude ({current_vals['V']:.1f} mm/s) zerstört die Schneidkantenmikrogeometrie.", 
-            "act": f"ABHILFE: Ändere vc um ±15% ({int(vc*0.85)} / {int(vc*1.15)} m/min)."
+            "diag": "RESONANT CHATTER",
+            "exp": f"Selbsterregte Schwingungen ({V:.1f} mm/s) stören den Spanbildungsprozess. Schneide droht unkontrolliert zu splittern.",
+            "act": f"DREHZAHL-SHIFT ERFORDERLICH: Brechen Sie die harmonische Resonanzwelle durch Änderung von vc um +15% auf {int(vc*1.15)} m/min."
         },
-        "Kühlungs-Abriss (Adhäsion)": {
-            "diag": "TRIBOLOGY FAILURE", 
-            "exp": "Schmierung kollabiert. Spanflächenreibung steigt sprunghaft an.", 
-            "act": "NOT-STOPP: KSS-Zuleitung prüfen."
+        "Aufbauschneidenbildung (Adhäsion)": {
+            "diag": "ADHESION DETECTED",
+            "exp": "Die Schnittgeschwindigkeit ist zu gering für die herrschende Pressung. Werkstoffteilchen verschweißen kalt auf der Schneide.",
+            "act": f"ERHÖHEN SIE vc: Fahren Sie vc um 20% hoch ({int(vc*1.2)} m/min), um die Fließzone thermodynamisch zu stabilisieren."
         },
-        "Axiale Schaft-Knickung (Stabilitätsversagen des Bohrers durch zu hohe Vorschubkraft)": {
-            "diag": "AXIAL BUCKLED", 
-            "exp": f"Die Vorschubkraft ({current_vals['F']:.0f} N) überschreitet die elastische Stabilitätsgrenze.", 
-            "act": f"ABHILFE: Vorschub f sofort halbieren!"
+        "Axiale Schaft-Knickung (Vorschub zu hoch)": {
+            "diag": "AXIAL BUCKLED",
+            "exp": f"Die axiale Vorschubkraft ({F:.0f} N) nähert sich der kritischen Knicklast nach Euler.",
+            "act": f"VORSCHUBKRAFT HALBIEREN: Reduzieren Sie f umgehend auf {f*0.5:.2f} mm/U, um ein Auswandern oder Brechen des Kerns zu verhindern."
         },
-        "Normaler Standzeit-Abrieb": {
-            "diag": "ABRASIVE WEAR", 
-            "exp": f"Fortgeschrittener mechanischer Verschleiß (Restintegrität {integrity:.1f}%).", 
-            "act": "GEPLANTER WECHSEL: Standzeitfenster erreicht."
+        "Kühlungs-Abriss (Thermoschock-Gefahr)": {
+            "diag": "TRIBOLOGY FAILURE",
+            "exp": "Schlagartiger Temperaturanstieg mangels KSS-Medium. Direktes Zuschalten bei dieser Hitze erzeugt Risse durch Thermoschock.",
+            "act": "ZYKLUS UNTERBRECHEN: Vorschub stoppen, Werkzeug rotierend aus der Bohrung fahren und langsam an der Luft abkühlen lassen."
+        },
+        "Spanstau / Spanflächen-Verstopfung": {
+            "diag": "CHIP CLOGGING",
+            "exp": "Drehmoment und Vibrationen steigen simultan. Späne werden in den Nuten nicht sauber abgeführt und blockieren den Kanal.",
+            "act": f"ENTSCHACHTELN & ENTSPANEN: Fahren Sie einen Entspanungszyklus (Pick-Feeding) mit verkürzter Bohrtiefe pro Hub."
+        },
+        "Mikro-Bröckelung der Schneidkante": {
+            "diag": "MICRO-CHIPPING",
+            "exp": "Hochfrequente Vibrationsspitzen haben zu feinen Ausbrüchen an der Schneidecke geführt. Erhöhter Verschleißprozess.",
+            "act": "WERKZEUGPRÜFUNG: Vorschub f leicht reduzieren. Bei der nächsten Gelegenheit Schneidkanten unter dem Mikroskop optisch prüfen."
+        },
+        "Schnittdaten-Unterforderung (Kaltverfestigung)": {
+            "diag": "LOW ENGAGEMENT",
+            "exp": "Der Vorschub ist zu gering, die Schneide schabt mehr als sie schneidet. Der Werkstoff verfestigt sich plastisch.",
+            "act": f"SPANSTÄRKE ERHÖHEN: Steigern Sie den Vorschub f auf mindestens {max(0.12, f*1.5):.2f} mm/U, um unter die Verfestigungszone zu kommen."
+        },
+        "Abrasiver Freiflächenverschleiß (Normal)": {
+            "diag": "ABRASIVE WEAR",
+            "exp": f"Fortschreitender Verschleiß durch harke Carbide im Material Gefüge. Restintegrität liegt bei {integrity:.1f}%.",
+            "act": "STANDZEIT-MONITORING: Der Prozess läuft stabil. Werkzeugwechsel beim nächsten planmäßigen Wartungsfenster einplanen."
+        },
+        "Spindellager-Überlastung (Vibration resonant)": {
+            "diag": "SPINDLE VIBRATION",
+            "exp": "Starke Vibrationen trotz niedriger Drehmomentlast weisen auf eine Unwucht oder einen Lagerschaden der Werkzeugspindel hin.",
+            "act": "WUCHT PRÜFEN: Drehzahl absenken. Aufnahme auf Verschmutzung oder Achsversatz im Spindelkopf untersuchen."
+        },
+        "Extrem-Vorschub-Stauchung": {
+            "diag": "HIGH FEED HEAVE",
+            "exp": "Der gewählte Vorschub zwingt die Querschneide zu extremer plastischer Deformation des Materials. Enorme axiale Pressung.",
+            "act": f"VORSCHUB ANPASSEN: Reduzieren Sie f auf maximal 0.30 mm/U, um die mechanische Kernkompression zu mindern."
+        },
+        "Kratzender Schnitt (Zentrierfehler)": {
+            "diag": "CENTERING ERROR",
+            "exp": "Hohe Axialkraft bei minimalem Drehmoment deutet darauf hin, dass die Zentrierspitze reibt, ohne dass die Hauptschneiden greifen.",
+            "act": "ANBOHRUNG PRÜFEN: Vorbohrung/Anzentrierung kontrollieren. Spitzenwinkel des Anbohrers muss größer sein als der des Hauptbohrers."
+        },
+        "KSS-Verdampfung (Kavitation)": {
+            "diag": "COOLANT BOILING",
+            "exp": "Temperatur liegt über 100°C trotz aktivem KSS. Das Kühlmedium verdampft direkt an der Wirkstelle und verliert die Kühlwirkung.",
+            "act": "DRUCK ERHÖHEN: Erhöhen Sie den KSS-Druck (IKZ) von Außenkühlung auf interne Kühlung, um das Medium unter Druck flüssig zu halten."
+        },
+        "Erhöhte Reibung durch Verschleißmarkenbreite": {
+            "diag": "FRICTION ELEVATION",
+            "exp": "Das Drehmoment kriecht nach oben, bedingt durch die vergrößerte Reibfläche an den verbrauchten Schneidkanten.",
+            "act": "WERKZEUG WECHSELN: Die Standzeitgrenze ist nahezu erreicht. Bereiten Sie den Tausch des Bohrers vor."
         }
     }
-    res = mapping.get(top_reason, {"diag": "NOMINAL PROCESS", "exp": "Prozessparameter im grünen Bereich.", "act": "Keine Korrekturmaßnahmen notwendig."})
-    res["snapshot"] = f"M: {current_vals['M']:.1f}Nm | T: {current_vals['T']:.0f}°C | V: {current_vals['V']:.1f}mm/s | F_f: {current_vals['F']:.0f}N"
-    return res
+    
+    res = mapping.get(top_reason)
+    res["snapshot"] = f"M: {M:.1f}Nm | T: {T:.0f}°C | V: {V:.1f}mm/s | F_f: {F:.0f}N"
+    return res, sorted_evidenz
 
 # --- PHYSIK-ENGINE ---
 n = (vc * 1000) / (np.pi * d) if d > 0 else 0
@@ -256,18 +355,13 @@ if s['active'] and not s['broken'] and not s['stall']:
     norm_force = s['vorschubkraft'] / crit_force
     norm_temp = s['thermik'] / m['t_crit']
     norm_vibr = s['vibration'] / 8.0
-    kss_loss = 1.0 if not kuehlung else 0.0
     norm_wear = (100.0 - s['integritaet']) / 100.0
     
-    weights = [3.0, 3.5, 2.5, 4.0, 3.0, 3.5]
-    scores = np.array([
-        norm_torque * weights[0], norm_temp * weights[1], norm_vibr * weights[2],
-        kss_loss * weights[3], norm_force * weights[4], norm_wear * weights[5]
-    ])
-    
-    exp_s = np.exp(scores - np.max(scores))
-    probabilities = (exp_s / exp_s.sum()) * 100
-    evidenz_list = sorted(zip(LABELS, probabilities), key=lambda x: x[1], reverse=True)
+    # Aufruf der neuen Sensor-Diagnose-Engine
+    exp_report, evidenz_list = compute_sensor_diagnostics(
+        {'M': s['drehmoment'], 'T': s['thermik'], 'V': s['vibration'], 'F': s['vorschubkraft']},
+        {'vc': vc, 'f': f, 'd': d}, s['integritaet'], kuehlung, m
+    )
     
     max_stress = max([norm_torque, norm_force, norm_temp, norm_vibr])
     combined_risk_score = max_stress + (norm_wear ** 2.0) * 0.95
@@ -298,7 +392,6 @@ if s['active'] and not s['broken'] and not s['stall']:
         s['active'] = False
         s['integritaet'] = 0.0
     
-    exp_report = get_expert_diagnostics(evidenz_list[0][0], {'M': s['drehmoment'], 'T': s['thermik'], 'V': s['vibration'], 'F': s['vorschubkraft']}, {'vc': vc, 'f': f, 'd': d}, s['integritaet'])
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': exp_report, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'p': s['leistung'], 'm': s['drehmoment'], 'f': s['vorschubkraft']})
 
@@ -342,7 +435,6 @@ with col_animation:
 
     synchronized_vfx = ""
     if s['active']:
-        # Auch das VFX-Gate verwendet nun die exakte dynamische Dauer
         synchronized_vfx += f"""
         <div style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; animation: vfx_sync_gate {dynamische_animations_dauer}s infinite ease-in-out; pointer-events: none;">
             <div style="position: absolute; left: 8px; bottom: 35px; width: 6px; height: 4px; background: {m['color']}; border-radius:2px; animation: chip_spray_left 0.1s infinite linear;"></div>
@@ -375,8 +467,6 @@ with col_animation:
         anim_spin = f"helical_spin {spin_duration} linear infinite" if s['active'] else "none"
         shake_duration = f"{max(0.005, 0.06 / (s['vibration'] + 0.01)):.3f}s"
         anim_shake = f"industrial_shake {shake_duration} infinite linear" if s['active'] or s['stall'] else "none"
-        
-        # DYNAMISCHER TIMEOUT-INJEKT für die Vorschub-Animation verhindert Stottern
         anim_feed = f"tool_feed_optimized {dynamische_animations_dauer}s infinite ease-in-out" if s['active'] else "none"
         
         drill_render = f"""
@@ -448,11 +538,11 @@ with t1:
             st.plotly_chart(fig, use_container_width=True)
             
     with col_log:
-        st.markdown("### 👁️ Erklärbare KI-Ursachendiagnose (XAI)")
+        st.markdown("### 👁️ Sensorbasierte KI-Ursachendiagnose (XAI)")
         if s['logs']:
             html_str = '<div class="xai-container">'
             for l in s['logs'][:10]:
-                bars = "".join([f'<div class="xai-feature-row"><span>{e[0]}</span><span>{e[1]:.1f}%</span></div><div class="xai-bar-bg"><div class="xai-bar-fill" style="width:{e[1]}%"></div></div>' for e in l['evidenz'][:3]])
+                bars = "".join([f'<div class="xai-feature-row"><span>{e[0]}</span><span>{e[1]:.1f}%</span></div><div class="xai-bar-bg"><div class="xai-bar-fill" style="width:{e[1]}%"></div></div>' for e in l['evidenz'][:3] if e[1] > 0])
                 html_str += f"""
                 <div class="xai-card">
                     <div style="display:flex; align-items:center; margin-bottom:6px;">
@@ -493,6 +583,12 @@ with t2:
         c_t = 0.12 * (lab_d ** 3)
         c_f = 320 * (lab_d ** 2)
         
+        # Aufruf der Diagnose-Engine innerhalb des Labors
+        lab_report, lab_evidenz_list = compute_sensor_diagnostics(
+            {'M': l_torque, 'T': l_temp, 'V': lab_vibr_override * sensor_vibr_gain, 'F': l_force},
+            {'vc': lab_vc, 'f': lab_f, 'd': lab_d}, lab_integ, lab_kss, lm
+        )
+        
         l_combined_score = max([l_torque/c_t, l_force/c_f, l_temp/lm['t_crit']]) + ((100.0 - lab_integ) / 100.0)**2 * 0.95
         lab_risk = np.clip(0.15 + (l_combined_score - 0.75) * 2.3 if l_combined_score >= 0.75 else l_combined_score * 0.18, 0.01, 0.99)
         
@@ -500,7 +596,13 @@ with t2:
         lc1.html(f'<div class="glass-card"><span class="val-title">Drehmoment</span><br><span class="val-main">{l_torque:.1f} Nm</span></div>')
         lc2.html(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main">{l_temp:.0f} °C</span></div>')
         
-        st.html(f'<div class="glass-card" style="border: 1px solid #58a6ff; background: rgba(88,166,255,0.05);"><span class="val-title">Bruchrisiko</span><br><span class="val-main" style="color:#ff7b72;">{lab_risk:.1%}</span></div>')
+        st.html(f"""
+            <div class="glass-card" style="border: 1px solid #58a6ff; background: rgba(88,166,255,0.05);">
+                <span class="val-title">Prädizierter Zustand: {lab_report['diag']}</span><br>
+                <p style="color:#f0f6fc; margin: 8px 0; font-weight:600;">{lab_report['exp']}</p>
+                <div style="color:#ff7b72; font-size:1.1rem; font-weight:bold; border-top:1px solid #30363d; padding-top:6px;">{lab_report['act']}</div>
+            </div>
+        """)
 
 # --- RUNTIME CONTROLS ---
 st.divider()
