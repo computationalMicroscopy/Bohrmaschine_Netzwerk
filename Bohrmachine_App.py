@@ -6,9 +6,10 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & HIGH-READABILITY STYLING ---
-st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor Pro V3.1", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor Pro V3.2", page_icon="⚙️")
 
-st.markdown("""
+# Reines CSS/HTML wird jetzt via st.html geladen -> Schützt vor Markdown-Konflikten
+st.html("""
     <style>
     /* Globaler Präsentations-Darkmode */
     .stApp { background-color: #0d1117; color: #c9d1d9; }
@@ -61,9 +62,9 @@ st.markdown("""
         100% { transform: translate(-1.5px, -0.5px) rotate(-0.1deg); }
     }
     </style>
-    """, unsafe_allow_html=True)
+""")
 
-st.markdown('<div class="main-title">🚀 Next-Gen KI-Zerspanungslabor & XAI-Plattform</div>', unsafe_allow_html=True)
+st.html('<div class="main-title">🚀 Next-Gen KI-Zerspanungslabor & XAI-Plattform</div>')
 
 # --- 2. XAI ROOT-CAUSE ENGINE ---
 def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
@@ -141,7 +142,7 @@ with st.sidebar:
     vc = st.slider("Schnittgeschwindigkeit vc [m/min]", 30, 350, 100)
     f = st.slider("Vorschub pro Umdrehung f [mm/U]", 0.05, 0.60, 0.15)
     d = st.slider("Bohrer-Durchmesser d [mm]", 5.0, 32.0, 12.0)
-    kuehlung = st.toggle("Kühlschmierstoff (KSS) aktiv", value=True)
+    kuehlung = st.toggle("Kühlschmierstoff (KSS) active", value=True)
     
     st.divider()
     st.header("📡 Sensor-Kalibrierung & Skalierung")
@@ -163,7 +164,6 @@ s['drehzahl'] = n
 if s['active'] and not s['broken'] and not s['stall']:
     s['zyklus'] += schrittweite
     
-    # Kienzle-Kraftmodellierung
     h = (f / 2.0)
     kc = m['kc1.1'] * (h ** -m['mc'])
     
@@ -174,17 +174,14 @@ if s['active'] and not s['broken'] and not s['stall']:
     crit_torque = 0.12 * (d ** 3) 
     crit_force = 320 * (d ** 2)
     
-    # Thermodynamik mit Sensor-Gain-Kopplung
     p_friction_watts = s['drehmoment'] * (n * 2 * np.pi / 60.0)
     kss_factor = 4.2 if kuehlung else 0.9  
     t_target = 22.0 + ((p_friction_watts * 0.22) / kss_factor) * sensor_temp_gain
     s['thermik'] += (t_target - s['thermik']) * 0.15 
     
-    # Schwingungsverhalten mit Sensor-Gain-Kopplung
     chatter_trigger = 1.2 + (s['drehmoment'] * 0.12) if (int(n) % 400 < 60) else 0.25
     s['vibration'] = max(0.1, (chatter_trigger + s['seed'].normal(0, 0.1) * noise_level) * sensor_vibr_gain)
     
-    # Normalisierungen
     norm_torque = s['drehmoment'] / crit_torque
     norm_force = s['vorschubkraft'] / crit_force
     norm_temp = s['thermik'] / m['t_crit']
@@ -192,7 +189,6 @@ if s['active'] and not s['broken'] and not s['stall']:
     kss_loss = 1.0 if not kuehlung else 0.0
     norm_wear = (100.0 - s['integritaet']) / 100.0
     
-    # XAI Bayes-Klassifikator
     weights = [3.0, 3.5, 2.5, 4.0, 3.0, 3.5]
     scores = np.array([
         norm_torque * weights[0], norm_temp * weights[1], norm_vibr * weights[2],
@@ -203,7 +199,6 @@ if s['active'] and not s['broken'] and not s['stall']:
     probabilities = (exp_s / exp_s.sum()) * 100
     evidenz_list = sorted(zip(LABELS, probabilities), key=lambda x: x[1], reverse=True)
     
-    # Didaktische Risiko-Kopplung
     max_stress = max([norm_torque, norm_force, norm_temp, norm_vibr])
     combined_risk_score = max_stress + (norm_wear ** 2.0) * 0.95
     
@@ -213,7 +208,6 @@ if s['active'] and not s['broken'] and not s['stall']:
         s['risk'] = 0.15 + (combined_risk_score - 0.75) * 2.5
     s['risk'] = np.clip(s['risk'], 0.01, 0.99)
     
-    # Verschleißfortschritt
     v_factor = (vc / 120.0) ** 1.6
     thermal_accelerator = np.exp(max(0.0, s['thermik'] - m['t_crit']) / 25.0)
     s['abrasion'] += (m['wear_factor'] * v_factor * f * thermal_accelerator) * (schrittweite / 10.0)
@@ -238,22 +232,20 @@ if s['active'] and not s['broken'] and not s['stall']:
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': exp_report, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'p': s['leistung'], 'm': s['drehmoment'], 'f': s['vorschubkraft']})
 
-# --- 6. HIGH-REALISMUS VISUELLES COCKPIT & VALIDE CSS-PROZESSANIMATION ---
+# --- 6. HIGH-REALISMUS VISUELLES COCKPIT (ST.HTML SCHÜTZT VOR BREAKS) ---
 if s['broken']:
-    st.markdown('<div class="emergency-alert">💥 STRUKTURELLER WERKZEUGBRUCH! Schaft durch mechanische Überlast komplett zerstört.</div>', unsafe_allow_html=True)
+    st.html('<div class="emergency-alert">💥 STRUKTURELLER WERKZEUGBRUCH! Schaft durch mechanische Überlast komplett zerstört.</div>')
 if s['stall']:
-    st.markdown('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme übersteigt maximales Drehmoment der Spindel (7.5 kW).</div>', unsafe_allow_html=True)
+    st.html('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme überschreitet maximales Drehmoment der Spindel (7.5 kW).</div>')
 
 col_animation, col_metrics = st.columns([1.2, 4])
 
 with col_animation:
-    # Saubere, rein Python-basierte Farb-Interpolation für die Bohrer-Spitze (Vermeidung von ungültigem CSS-mix())
     t_val = s['thermik']
     if t_val < 150:
         target_color = "#555555"
         glow_box = "none"
     elif t_val < 350:
-        # Sanfter Übergang zu warmem Metall-Braun/Anlauf-Orange
         factor = (t_val - 150) / 200
         r = int(85 + (120 - 85) * factor)
         g = int(85 + (80 - 85) * factor)
@@ -261,7 +253,6 @@ with col_animation:
         target_color = f"rgb({r},{g},{b})"
         glow_box = f"0 0 {int(5 + 10*factor)}px rgba(255, 106, 0, 0.4)"
     else:
-        # Kritisches Glühen bis hin zu gleißendem Hellrot
         factor = min(1.0, (t_val - 350) / 350)
         r = int(200 + (55 * factor))
         g = int(50 * factor)
@@ -270,12 +261,11 @@ with col_animation:
 
     glow_style = f"background: {target_color}; box-shadow: {glow_box};"
 
-    # Dynamische Schwingungs- und Rotations-Zuweisung
     if s['broken']:
         anim_spin, anim_shake = "none", "none"
         body_render = """
-            <div style="width: 45px; height: 60px; background: #444; margin-left: 10px; transform: rotate(-20deg); border-bottom: 2px dashed red;"></div>
-            <div style="width: 45px; height: 60px; background: #333; margin-top: 15px; margin-left: -20px; transform: rotate(45deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
+        <div style="width: 45px; height: 60px; background: #444; margin-left: 10px; transform: rotate(-20deg); border-bottom: 2px dashed red;"></div>
+        <div style="width: 45px; height: 60px; background: #333; margin-top: 15px; margin-left: -20px; transform: rotate(45deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
         """
         status_label = "<span style='color:#ff7b72; font-weight:900;'>CRASH / BRUCH</span>"
     else:
@@ -285,31 +275,32 @@ with col_animation:
         anim_shake = f"severe_shake {shake_duration} infinite alternate" if s['active'] or s['stall'] else "none"
         
         body_render = f"""
-            <div style="animation: {anim_spin}; width: 45px; height: 110px; background: linear-gradient(120deg, #777 20%, #222 35%, #888 50%, #222 65%, #666 80%); background-size: 45px 40px; box-shadow: inset 2px 0 10px rgba(0,0,0,0.5); border-radius: 0 0 2px 2px;"></div>
-            <div style="{glow_style} width: 45px; height: 22px; clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px; transition: all 0.2s;"></div>
+        <div style="animation: {anim_spin}; width: 45px; height: 110px; background: linear-gradient(120deg, #777 20%, #222 35%, #888 50%, #222 65%, #666 80%); background-size: 45px 40px; box-shadow: inset 2px 0 10px rgba(0,0,0,0.5); border-radius: 0 0 2px 2px;"></div>
+        <div style="{glow_style} width: 45px; height: 22px; clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px; transition: all 0.2s;"></div>
         """
         status_label = "<span style='color:#2ea44f; font-weight:900;'>ROTATION LIVE</span>" if s['active'] else "<span style='color:#8b949e;'>STANDBY</span>"
         if s['stall']: status_label = "<span style='color:#e3b341; font-weight:900;'>STALL / BLOCKIERT</span>"
 
-    st.markdown(f"""
+    # Komplett über st.html gekapselt -> verzieht sich niemals im Layout
+    st.html(f"""
         <div class="glass-card" style="padding: 16px; height: 100%; min-height: 250px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #12161f;">
             <span class="val-title" style="margin-bottom: 10px; color: #58a6ff;">Spindel-Monitor</span>
             <div style="width: 75px; height: 40px; background: linear-gradient(to right, #333, #555, #333); border-radius: 6px 6px 0 0; border: 1px solid #444; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
             <div style="animation: {anim_shake}; width: 100%; display: flex; flex-direction: column; align-items: center;">
                 {body_render}
             </div>
-            <div style="margin-top: 15px; font-size: 1.15rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.7px; background: #161b22; padding: 4px 12px; border-radius: 6px; border: 1px solid #30363d;">{status_label}</div>
+            <div style="margin-top: 15px; font-size: 1.15rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.7px; background: #161b22; padding: 4px 12px; border-radius: 6px; border: 1px solid #30363d; text-align:center; min-width:140px;">{status_label}</div>
         </div>
-    """, unsafe_allow_html=True)
+    """)
 
 with col_metrics:
     c0, c1, c2, c3, c4, c5 = st.columns(6)
-    c0.markdown(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
-    c1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#2ea44f">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="glass-card"><span class="val-title">Bruchrisiko</span><br><span class="val-main" style="color:#f85149">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main" style="color:#ff7b72">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="glass-card"><span class="val-title">Schwingung</span><br><span class="val-main" style="color:#a371f7">{s["vibration"]:.2f} mm/s</span></div>', unsafe_allow_html=True)
-    c5.markdown(f'<div class="glass-card"><span class="val-title">Drehmoment</span><br><span class="val-main" style="color:#e3b341">{s["drehmoment"]:.1f} Nm</span></div>', unsafe_allow_html=True)
+    c0.html(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>')
+    c1.html(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#2ea44f">{s["integritaet"]:.1f}%</span></div>')
+    c2.html(f'<div class="glass-card"><span class="val-title">Bruchrisiko</span><br><span class="val-main" style="color:#f85149">{s["risk"]:.1%}</span></div>')
+    c3.html(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main" style="color:#ff7b72">{s["thermik"]:.0f}°C</span></div>')
+    c4.html(f'<div class="glass-card"><span class="val-title">Schwingung</span><br><span class="val-main" style="color:#a371f7">{s["vibration"]:.2f} mm/s</span></div>')
+    c5.html(f'<div class="glass-card"><span class="val-title">Drehmoment</span><br><span class="val-main" style="color:#e3b341">{s["drehmoment"]:.1f} Nm</span></div>')
 
 # --- 7. TABS: LIVE TRENDS VS SZENARIEN-LABOR ---
 t1, t2 = st.tabs(["📈 Live-Prozessüberwachung & Oszilloskop", "🔬 Interaktives Was-Wäre-Wenn Szenarien-Labor"])
@@ -351,7 +342,7 @@ with t1:
                     <div class="action-text">{l['info']['act']}</div>
                 </div>"""
             html_str += '</div>'
-            st.markdown(html_str, unsafe_allow_html=True)
+            st.html(html_str)
 
 # --- 8. WAS-WÄRE-WENN LABOR ---
 with t2:
@@ -419,19 +410,19 @@ with t2:
         lab_risk = np.clip(lab_risk, 0.01, 0.99)
         
         lc1, lc2 = st.columns(2)
-        lc1.markdown(f'<div class="glass-card"><span class="val-title">Errechnetes Drehmoment</span><br><span class="val-main" style="color:#e3b341">{l_torque:.1f} Nm</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Bruch-Limit: {c_t:.1f} Nm</span></div>', unsafe_allow_html=True)
-        lc2.markdown(f'<div class="glass-card"><span class="val-title">Errechnete Temperatur</span><br><span class="val-main" style="color:#ff7b72">{l_temp:.0f} °C</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Werkstoff-Erweichungs-Limit: {lm["t_crit"]} °C</span></div>', unsafe_allow_html=True)
+        lc1.html(f'<div class="glass-card"><span class="val-title">Errechnetes Drehmoment</span><br><span class="val-main" style="color:#e3b341">{l_torque:.1f} Nm</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Bruch-Limit: {c_t:.1f} Nm</span></div>')
+        lc2.html(f'<div class="glass-card"><span class="val-title">Errechnete Temperatur</span><br><span class="val-main" style="color:#ff7b72">{l_temp:.0f} °C</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Werkstoff-Erweichungs-Limit: {lm["t_crit"]} °C</span></div>')
         
         lc3, lc4 = st.columns(2)
-        lc3.markdown(f'<div class="glass-card"><span class="val-title">Erwartete Spindellast</span><br><span class="val-main" style="color:#58a6ff">{l_power:.2f} kW</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Max. Motorleistung: 7.5 kW</span></div>', unsafe_allow_html=True)
-        lc4.markdown(f'<div class="glass-card"><span class="val-title">Errechnete Vorschubkraft</span><br><span class="val-main" style="color:#1f6feb">{l_force:.0f} N</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Knick-Limit: {c_f:.0f} N</span></div>', unsafe_allow_html=True)
+        lc3.html(f'<div class="glass-card"><span class="val-title">Erwartete Spindellast</span><br><span class="val-main" style="color:#58a6ff">{l_power:.2f} kW</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Max. Motorleistung: 7.5 kW</span></div>')
+        lc4.html(f'<div class="glass-card"><span class="val-title">Errechnete Vorschubkraft</span><br><span class="val-main" style="color:#1f6feb">{l_force:.0f} N</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Knick-Limit: {c_f:.0f} N</span></div>')
         
-        st.markdown(f"""
+        st.html(f"""
             <div class="glass-card" style="border: 3px solid #58a6ff; margin-top:15px; background: #1f242c;">
                 <span class="val-title" style="font-size:1.35rem;">Präzisiertes KI-Bruchrisiko:</span><br>
                 <span class="val-main" style="color:#ff7b72; font-size:3.4rem; margin-top:8px;">{lab_risk:.1%}</span>
             </div>
-        """, unsafe_allow_html=True)
+        """)
         
         st.markdown("### 🔬 Prädizierte KI-Ursachengewichtung:")
         html_bars = ""
@@ -440,7 +431,7 @@ with t2:
             <div class="xai-feature-row" style="margin-top:12px;"><span>{name}</span><span style="font-weight:bold;">{prob:.1f}%</span></div>
             <div class="xai-bar-bg" style="height:12px;"><div class="xai-bar-fill" style="width:{prob}%; height:12px;"></div></div>
             """
-        st.markdown(html_bars, unsafe_allow_html=True)
+        st.html(html_bars)
 
 # --- 9. RUNTIME CONTROLS ---
 st.divider()
