@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & HIGH-END INDUSTRIAL STYLING ---
-st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor TwinPro V4.0", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor TwinPro V4.5", page_icon="⚙️")
 
 st.html("""
     <style>
@@ -74,35 +74,46 @@ st.html("""
         border: 1px solid #f85149;
     }
 
-    /* --- ULTIMATE REALISM ANIMATION KEYFRAMES --- */
+    /* --- ULTIMATE HIGH-REALISM ANIMATION KEYFRAMES --- */
     @keyframes helical_spin {
-        0% { background-position: 0px 0px; }
-        100% { background-position: 0px -160px; } /* Zieht die Wendel nach unten weg */
+        0% { background-position: 0px 0px, 0px 0px; }
+        100% { background-position: 0px -160px, 0px 0px; }
+    }
+    @keyframes tool_feed {
+        0% { transform: translateY(-6px); }
+        50% { transform: translateY(12px); }
+        100% { transform: translateY(-6px); }
     }
     @keyframes industrial_shake {
-        0% { transform: translate(0.5px, 0.5px) rotate(0.05deg); }
-        50% { transform: translate(-0.8px, 0.2px) rotate(-0.05deg); }
-        100% { transform: translate(0.4px, -0.6px) rotate(0.03deg); }
+        0% { transform: translate(0.3px, 0.3px) rotate(0.03deg); }
+        50% { transform: translate(-0.6px, 0.1px) rotate(-0.03deg); }
+        100% { transform: translate(0.3px, -0.4px) rotate(0.02deg); }
     }
     @keyframes chip_spray_left {
         0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
         80% { opacity: 0.8; }
-        100% { transform: translate(-60px, -30px) scale(0.2) rotate(-180deg); opacity: 0; }
+        100% { transform: translate(-70px, -40px) scale(0.1) rotate(-360deg); opacity: 0; }
     }
     @keyframes chip_spray_right {
         0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
         80% { opacity: 0.8; }
-        100% { transform: translate(60px, -30px) scale(0.2) rotate(180deg); opacity: 0; }
+        100% { transform: translate(70px, -40px) scale(0.1) rotate(360deg); opacity: 0; }
     }
     @keyframes smoke_rise {
-        0% { transform: translate(-50%, -10px) scale(0.8); opacity: 0; }
-        50% { opacity: 0.4; }
-        100% { transform: translate(-50%, -50px) scale(2.5); opacity: 0; }
+        0% { transform: translate(-50%, -5px) scale(0.6); opacity: 0; }
+        40% { opacity: 0.3; }
+        100% { transform: translate(-50%, -60px) scale(3.0); opacity: 0; }
+    }
+    @keyframes kss_flow_left {
+        0% { transform: translate(-40px, -60px) scaleX(1) rotate(45deg); opacity: 0.8; }
+        100% { transform: translate(-4px, -5px) scaleX(0.2) rotate(45deg); opacity: 1; }
+    }
+    @keyframes kss_flow_right {
+        0% { transform: translate(40px, -60px) scaleX(1) rotate(-45deg); opacity: 0.8; }
+        100% { transform: translate(4px, -5px) scaleX(0.2) rotate(-445deg); opacity: 1; }
     }
     </style>
 """)
-
-st.html('<div class="main-title">🚀 Next-Gen KI-Zerspanungslabor & XAI-Plattform</div>')
 
 # --- 2. XAI ROOT-CAUSE ENGINE ---
 def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
@@ -147,7 +158,7 @@ def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
 # --- 3. INITIALISIERUNG & STATE-MACHINE ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {
-        'zyklus': 0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
+        'zyklus': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
         'thermik': 22.0, 'vibration': 0.2, 'integritaet': 100.0, 'risk': 0.0,
         'drehmoment': 0.0, 'leistung': 0.0, 'vorschubkraft': 0.0, 'abrasion': 0.0, 'drehzahl': 0.0,
         'seed': np.random.RandomState(42)
@@ -156,10 +167,10 @@ if 'twin' not in st.session_state:
 s = st.session_state.twin
 
 MATERIALIEN = {
-    "Baustahl (1.0037)": {"kc1.1": 1800, "mc": 0.25, "wear_factor": 0.02, "t_crit": 450, "color": "#4a5568"}, 
-    "Vergütungsstahl (1.7225)": {"kc1.1": 2100, "mc": 0.24, "wear_factor": 0.05, "t_crit": 550, "color": "#2d3748"}, 
-    "Titanlegierung (3.7165)": {"kc1.1": 2500, "mc": 0.23, "wear_factor": 0.16, "t_crit": 650, "color": "#718096"},
-    "Edelstahl (1.4301)": {"kc1.1": 2300, "mc": 0.22, "wear_factor": 0.12, "t_crit": 600, "color": "#a0aec0"}
+    "Baustahl (1.0037)": {"kc1.1": 1800, "mc": 0.25, "wear_factor": 0.004, "t_crit": 450, "color": "#4a5568"}, 
+    "Vergütungsstahl (1.7225)": {"kc1.1": 2100, "mc": 0.24, "wear_factor": 0.012, "t_crit": 550, "color": "#2d3748"}, 
+    "Titanlegierung (3.7165)": {"kc1.1": 2500, "mc": 0.23, "wear_factor": 0.055, "t_crit": 650, "color": "#718096"},
+    "Edelstahl (1.4301)": {"kc1.1": 2300, "mc": 0.22, "wear_factor": 0.038, "t_crit": 600, "color": "#a0aec0"}
 }
 
 LABELS = [
@@ -192,15 +203,16 @@ with st.sidebar:
     noise_level = st.slider("Rausch-Amplitude (Vibration)", 0.1, 2.0, 0.5)
     
     st.divider()
-    schrittweite = st.number_input("Simulationsschritte pro Takt", 5, 100, 20)
+    schrittweite = st.number_input("Zeitskalierungsfaktor", 1, 20, 5)
     taktzeit = st.select_slider("Aktualisierungsintervall (ms)", options=[500, 200, 100, 0], value=100)
 
-# --- 5. PHYSIK-ENGINE (LIVE-PROZESS) ---
+# --- 5. PHYSIK-ENGINE (REAL-TIME ADAPTED) ---
 n = (vc * 1000) / (np.pi * d) if d > 0 else 0
 s['drehzahl'] = n
 
 if s['active'] and not s['broken'] and not s['stall']:
-    s['zyklus'] += schrittweite
+    dt = (taktzeit / 1000.0 if taktzeit > 0 else 0.05) * schrittweite
+    s['zyklus'] += dt # Akkumuliert reale Schnittsekunden
     
     h = (f / 2.0)
     kc = m['kc1.1'] * (h ** -m['mc'])
@@ -213,12 +225,12 @@ if s['active'] and not s['broken'] and not s['stall']:
     crit_force = 320 * (d ** 2)
     
     p_friction_watts = s['drehmoment'] * (n * 2 * np.pi / 60.0)
-    kss_factor = 4.2 if kuehlung else 0.9  
-    t_target = 22.0 + ((p_friction_watts * 0.22) / kss_factor) * sensor_temp_gain
-    s['thermik'] += (t_target - s['thermik']) * 0.15 
+    kss_factor = 4.5 if kuehlung else 0.85  
+    t_target = 22.0 + ((p_friction_watts * 0.20) / kss_factor) * sensor_temp_gain
+    s['thermik'] += (t_target - s['thermik']) * 0.20 
     
-    chatter_trigger = 1.2 + (s['drehmoment'] * 0.12) if (int(n) % 400 < 60) else 0.25
-    s['vibration'] = max(0.1, (chatter_trigger + s['seed'].normal(0, 0.1) * noise_level) * sensor_vibr_gain)
+    chatter_trigger = 1.0 + (s['drehmoment'] * 0.10) if (int(n) % 400 < 60) else 0.20
+    s['vibration'] = max(0.1, (chatter_trigger + s['seed'].normal(0, 0.08) * noise_level) * sensor_vibr_gain)
     
     norm_torque = s['drehmoment'] / crit_torque
     norm_force = s['vorschubkraft'] / crit_force
@@ -241,20 +253,20 @@ if s['active'] and not s['broken'] and not s['stall']:
     combined_risk_score = max_stress + (norm_wear ** 2.0) * 0.95
     
     if combined_risk_score < 0.75:
-        s['risk'] = combined_risk_score * 0.20  
+        s['risk'] = combined_risk_score * 0.18  
     else:
-        s['risk'] = 0.15 + (combined_risk_score - 0.75) * 2.5
+        s['risk'] = 0.15 + (combined_risk_score - 0.75) * 2.3
     s['risk'] = np.clip(s['risk'], 0.01, 0.99)
     
-    v_factor = (vc / 120.0) ** 1.6
-    thermal_accelerator = np.exp(max(0.0, s['thermik'] - m['t_crit']) / 25.0)
-    s['abrasion'] += (m['wear_factor'] * v_factor * f * thermal_accelerator) * (schrittweite / 10.0)
+    v_factor = (vc / 120.0) ** 1.5
+    thermal_accelerator = np.exp(max(0.0, s['thermik'] - m['t_crit']) / 30.0)
+    s['abrasion'] += (m['wear_factor'] * v_factor * f * thermal_accelerator) * dt
     
     fatigue = 0.0
     if norm_torque > 0.85: fatigue += (norm_torque - 0.85) ** 2
     if norm_force > 0.85: fatigue += (norm_force - 0.85) ** 2
     
-    total_wear_increment = ((s['abrasion'] * 0.002) + fatigue) * schrittweite
+    total_wear_increment = ((s['abrasion'] * 0.02) + fatigue * 0.5) * dt * 10.0
     s['integritaet'] = max(0.0, s['integritaet'] - total_wear_increment)
     
     if s['leistung'] > 7.5:
@@ -270,99 +282,121 @@ if s['active'] and not s['broken'] and not s['stall']:
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': exp_report, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'p': s['leistung'], 'm': s['drehmoment'], 'f': s['vorschubkraft']})
 
-# --- 6. CRASH DETECTION STATUS INDICATORS ---
+# --- 6. VISUELLES HIGH-FIDELITY UPGRADE ---
 if s['broken']:
     st.html('<div class="emergency-alert">💥 STRUKTURELLER WERKZEUGBRUCH! Schaft durch mechanische Überlast komplett zerstört.</div>')
 if s['stall']:
-    st.html('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme übersteigt maximales Drehmoment der Spindel (7.5 kW).</div>')
+    st.html('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme überschreitet maximales Drehmoment der Spindel (7.5 kW).</div>')
 
-col_animation, col_metrics = st.columns([1.3, 4])
+col_animation, col_metrics = st.columns([1.4, 4])
 
 with col_animation:
     t_val = s['thermik']
+    integ_val = s['integritaet']
     
-    # Intelligente Farb-Interpolation für das Glühen der Hauptschneiden
+    # Thermischer Gradient & Verschleiß-Überlagerung an der Spitze
     if t_val < 150:
-        glow_color = "rgba(85,85,85,0)"
-        tip_color = "#555555"
+        tip_base = "#555555"
+        glow_effect = "rgba(0,0,0,0)"
     elif t_val < 380:
         factor = (t_val - 150) / 230
-        r = int(85 + (160 - 85) * factor)
-        g = int(85 + (70 - 85) * factor)
-        b = int(85 + (30 - 85) * factor)
-        tip_color = f"rgb({r},{g},{b})"
-        glow_color = f"rgba(255, 100, 0, {0.2 * factor})"
+        r = int(85 + (165 - 85) * factor)
+        g = int(85 + (65 - 85) * factor)
+        b = int(85 + (20 - 85) * factor)
+        tip_base = f"rgb({r},{g},{b})"
+        glow_effect = f"0 8px 20px rgba(255, 90, 0, {0.25 * factor})"
     else:
         factor = min(1.0, (t_val - 380) / 320)
-        r = int(160 + (95 * factor))
-        g = int(70 * (1.0 - factor))
-        tip_color = f"rgb({r}, {g}, 0)"
-        glow_color = f"rgba({r}, {g}, 0, {0.4 + 0.5 * factor})"
+        r = int(165 + (90 * factor))
+        g = int(65 * (1.0 - factor))
+        tip_base = f"rgb({r}, {g}, 0)"
+        glow_effect = f"0 8px 25px rgba({r}, {g}, 0, {0.4 + 0.5 * factor})"
 
-    # Späne-Generierung & Rauch-Animationen via CSS-Injektion
+    # Mischung aus Hitze und mechanischer Graufärbung/Abnutzung
+    wear_factor = (100.0 - integ_val) / 100.0
+    if not s['broken']:
+        # Blende progressiv Brandspuren/Verschleiß ein
+        tip_color = f"linear-gradient(to bottom, #444 0%, {tip_base} 70%, rgba(20,20,20,{wear_factor:.2f}) 100%)"
+    else:
+        tip_color = "#222"
+
+    # Partikel- und KSS-Injektionen
     extra_fx = ""
     if s['active']:
+        # Metallspäne-Flug
         extra_fx += f"""
-        <div style="position: absolute; left: 10px; bottom: 35px; width: 6px; height: 4px; background: {m['color']}; border-radius:2px; animation: chip_spray_left 0.15s infinite linear;"></div>
-        <div style="position: absolute; right: 10px; bottom: 35px; width: 5px; height: 3px; background: {m['color']}; border-radius:1px; animation: chip_spray_right 0.12s infinite linear; animation-delay: 0.05s;"></div>
+        <div style="position: absolute; left: 8px; bottom: 35px; width: 6px; height: 4px; background: {m['color']}; border-radius:2px; animation: chip_spray_left 0.12s infinite linear;"></div>
+        <div style="position: absolute; right: 8px; bottom: 35px; width: 5px; height: 3px; background: {m['color']}; border-radius:1px; animation: chip_spray_right 0.10s infinite linear; animation-delay: 0.04s;"></div>
         """
-        if t_val > 280:
-            extra_fx += f"""
-            <div style="position: absolute; left: 50%; bottom: 35px; width: 14px; height: 14px; background: rgba(255,255,255,0.15); filter: blur(5px); border-radius: 50%; animation: smoke_rise 0.4s infinite linear;"></div>
-            <div style="position: absolute; left: calc(20px + 5px); bottom: 35px; width: 4px; height: 4px; background: #ffaa00; box-shadow:0 0 5px #ff5500; border-radius:50%; animation: chip_spray_left 0.08s infinite linear;"></div>
-            <div style="position: absolute; right: calc(20px + 5px); bottom: 35px; width: 3px; height: 3px; background: #ffdd00; box-shadow:0 0 5px #ff5500; border-radius:50%; animation: chip_spray_right 0.07s infinite linear;"></div>
+        # Kühlmittelstrahlen (falls aktiv)
+        if kuehlung:
+            extra_fx += """
+            <div style="position: absolute; width: 3px; height: 70px; background: rgba(180, 230, 255, 0.6); border-radius: 2px; filter: blur(1px); animation: kss_flow_left 0.15s infinite linear;"></div>
+            <div style="position: absolute; width: 3px; height: 70px; background: rgba(180, 230, 255, 0.6); border-radius: 2px; filter: blur(1px); animation: kss_flow_right 0.15s infinite linear;"></div>
+            """
+        # Qualm & glühende Funken bei Hitze
+        if t_val > 250:
+            extra_fx += """
+            <div style="position: absolute; left: 50%; bottom: 35px; width: 16px; height: 16px; background: rgba(230,230,230,0.12); filter: blur(6px); border-radius: 50%; animation: smoke_rise 0.35s infinite linear;"></div>
+            """
+        if t_val > 400:
+            extra_fx += """
+            <div style="position: absolute; left: 15px; bottom: 35px; width: 3px; height: 3px; background: #ffaa00; box-shadow:0 0 4px #ff4400; border-radius:50%; animation: chip_spray_left 0.07s infinite linear;"></div>
+            <div style="position: absolute; right: 15px; bottom: 35px; width: 3px; height: 3px; background: #ffcc00; box-shadow:0 0 4px #ff4400; border-radius:50%; animation: chip_spray_right 0.06s infinite linear;"></div>
             """
 
     # Dynamische Zuweisung von Drehzahl-Frequenz & Vibrationen
     if s['broken']:
-        anim_spin, anim_shake = "none", "none"
+        anim_spin, anim_shake, anim_feed = "none", "none", "none"
         drill_render = """
-        <div style="width: 45px; height: 60px; background: #3a3a3a; transform: translate(15px, -10px) rotate(-35deg); border-bottom: 2px dashed #ff3333; box-shadow: inset 2px 0 10px rgba(0,0,0,0.5);"></div>
-        <div style="width: 45px; height: 50px; background: #222222; transform: translate(-20px, 15px) rotate(50deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
+        <div style="width: 44px; height: 60px; background: #3a3a3a; transform: translate(14px, -5px) rotate(-30deg); border-bottom: 3px dashed #ff3333; box-shadow: inset 3px 0 10px rgba(0,0,0,0.6);"></div>
+        <div style="width: 44px; height: 50px; background: #1a1a1a; transform: translate(-18px, 20px) rotate(55deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%); border: 1px solid #333;"></div>
         """
         status_label = "<span style='color:#ff7b72; font-weight:900;'>CRASH / BRUCH</span>"
     else:
-        spin_duration = f"{max(0.015, 60.0 / (s['drehzahl'] + 1)):.3f}s" if s['active'] else "0s"
+        spin_duration = f"{max(0.012, 50.0 / (s['drehzahl'] + 1)):.3f}s" if s['active'] else "0s"
         anim_spin = f"helical_spin {spin_duration} linear infinite" if s['active'] else "none"
-        shake_duration = f"{max(0.008, 0.08 / (s['vibration'] + 0.01)):.3f}s"
+        shake_duration = f"{max(0.006, 0.07 / (s['vibration'] + 0.01)):.3f}s"
         anim_shake = f"industrial_shake {shake_duration} infinite linear" if s['active'] or s['stall'] else "none"
+        anim_feed = "tool_feed 2.5s infinite ease-in-out" if s['active'] else "none"
         
         drill_render = f"""
-        <div style="animation: {anim_spin}; width: 45px; height: 110px; 
-                    background: repeating-linear-gradient(135deg, rgba(0,0,0,0.7) 0px, rgba(0,0,0,0.7) 15px, #444 20px, #777 25px, #444 30px, rgba(0,0,0,0.7) 45px); 
-                    background-size: 100% 50px; box-shadow: inset 3px 0 12px rgba(0,0,0,0.6); border-radius: 0 0 1px 1px; transition: all 0.1s;"></div>
-        <div style="background: linear-gradient(to bottom, #444 0%, {tip_color} 85%); 
-                    box-shadow: 0 6px 15px {glow_color}; width: 45px; height: 20px; 
-                    clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px; transition: background 0.2s;"></div>
+        <div style="animation: {anim_spin}; width: 44px; height: 115px; 
+                    background: linear-gradient(to right, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 25%, rgba(0,0,0,0.5) 75%, rgba(0,0,0,0.8) 100%),
+                                repeating-linear-gradient(135deg, #15191e 0px, #15191e 12px, #444 16px, #888 22px, #444 26px, #15191e 38px); 
+                    background-size: 100% 100%, 100% 45px; box-shadow: inset 4px 0 10px rgba(0,0,0,0.7); border-radius: 0 0 1px 1px;"></div>
+        <div style="background: {tip_color}; box-shadow: {glow_effect}; width: 44px; height: 21px; 
+                    clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px; transition: background 0.15s;"></div>
         """
         status_label = "<span style='color:#2ea44f; font-weight:900;'>ROTATION LIVE</span>" if s['active'] else "<span style='color:#8b949e;'>STANDBY</span>"
         if s['stall']: status_label = "<span style='color:#e3b341; font-weight:900;'>STALL / BLOCKIERT</span>"
 
     st.html(f"""
-        <div class="glass-card" style="padding: 20px; height: 100%; min-height: 295px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; background: #0f131a; position: relative; overflow: hidden;">
-            <span class="val-title" style="color: #58a6ff; font-size:1.1rem;">Spindel-Visualizer</span>
+        <div class="glass-card" style="padding: 20px; height: 100%; min-height: 310px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; background: #0b0e14; position: relative; overflow: hidden;">
+            <span class="val-title" style="color: #58a6ff; font-size:1.05rem;">Spindel-Zerspanungsraum</span>
             
-            <div style="width: 70px; height: 35px; background: linear-gradient(90deg, #1f242e 0%, #4f5866 50%, #1f242e 100%); border-radius: 4px 4px 0 0; border: 1px solid #30363d; z-shadow: 0 4px 10px rgba(0,0,0,0.4);"></div>
+            <div style="width: 75px; height: 32px; background: linear-gradient(90deg, #1c212b 0%, #5c6673 50%, #1c212b 100%); border-radius: 4px 4px 0 0; border: 1px solid #30363d; box-shadow: 0 3px 8px rgba(0,0,0,0.5); z-index:2;"></div>
             
-            <div style="animation: {anim_shake}; display: flex; flex-direction: column; align-items: center; position: relative;">
-                {drill_render}
-                {extra_fx}
+            <div style="animation: {anim_feed}; width: 100%; display: flex; flex-direction: column; align-items: center; z-index:1;">
+                <div style="animation: {anim_shake}; display: flex; flex-direction: column; align-items: center; position: relative;">
+                    {drill_render}
+                    {extra_fx}
+                </div>
             </div>
             
-            <div style="width: 110%; height: 22px; background: linear-gradient(180deg, {m['color']} 0%, #111 100%); border-top: 2px solid rgba(255,255,255,0.1); border-radius: 4px; z-index: 10; margin-top:-3px; display:flex; justify-content:center;">
-                <div style="width: 14px; height: 6px; background: rgba(0,0,0,0.5); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
+            <div style="width: 115%; height: 25px; background: linear-gradient(180deg, {m['color']} 0%, #0d1117 100%); border-top: 2px solid rgba(255,255,255,0.15); border-radius: 3px; z-index: 3; margin-top:-2px; display:flex; justify-content:center;">
+                <div style="width: 16px; height: 8px; background: rgba(0,0,0,0.6); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
             </div>
             
-            <div style="margin-top: 12px; font-size: 1.1rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.8px; background: #161b22; padding: 5px 16px; border-radius: 20px; border: 1px solid #30363d; text-align:center; min-width:150px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);">{status_label}</div>
+            <div style="margin-top: 10px; font-size: 1.05rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.8px; background: #161b22; padding: 5px 16px; border-radius: 20px; border: 1px solid #30363d; text-align:center; min-width:150px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);">{status_label}</div>
         </div>
     """)
 
 # --- 7. UX-DASHBOARD-KPI PANELS ---
 with col_metrics:
     c0, c1, c2, c3, c4, c5 = st.columns(6)
-    c0.html(f'<div class="glass-card"><span class="val-title">Sim-Zyklen</span><br><span class="val-main" style="color:#8b949e">{s["zyklus"]}</span></div>')
+    c0.html(f'<div class="glass-card"><span class="val-title">Schnittzeit tc</span><br><span class="val-main" style="color:#58a6ff">{s["zyklus"]:.1f} <span style="font-size:16px">s</span></span></div>')
     
-    # Farbliche Anpassung der KPI-Karten basierend auf Degradation
     i_color = "#2ea44f" if s['integritaet'] > 50 else ("#e3b341" if s['integritaet'] > 20 else "#f85149")
     c1.html(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:{i_color}">{s["integritaet"]:.1f}%</span></div>')
     
@@ -452,8 +486,8 @@ with t2:
         l_power = (l_torque * l_n) / 9550.0
         
         l_p_friction = l_torque * (l_n * 2 * np.pi / 60.0)
-        l_kss_fac = 4.2 if lab_kss else 0.9  
-        l_temp = (22.0 + (l_p_friction * 0.22) / l_kss_fac) * sensor_temp_gain
+        l_kss_fac = 4.5 if lab_kss else 0.85  
+        l_temp = (22.0 + (l_p_friction * 0.20) / l_kss_fac) * sensor_temp_gain
         
         c_t = 0.12 * (lab_d ** 3)
         c_f = 320 * (lab_d ** 2)
@@ -479,9 +513,9 @@ with t2:
         l_combined_score = l_max_stress + (l_norm_wear ** 2.0) * 0.95
         
         if l_combined_score < 0.75:
-            lab_risk = l_combined_score * 0.20
+            lab_risk = l_combined_score * 0.18
         else:
-            lab_risk = 0.15 + (l_combined_score - 0.75) * 2.5
+            lab_risk = 0.15 + (l_combined_score - 0.75) * 2.3
         lab_risk = np.clip(lab_risk, 0.01, 0.99)
         
         lc1, lc2 = st.columns(2)
@@ -515,7 +549,7 @@ if b1.button("▶ SIMULATION STARTEN / PAUSIEREN", use_container_width=True):
     st.session_state.twin['active'] = not st.session_state.twin['active']
 if b2.button("🔄 NEUES WERKZEUG EINSPANNEN (RESET)", use_container_width=True):
     st.session_state.twin = {
-        'zyklus': 0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
+        'zyklus': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
         'thermik': 22.0, 'vibration': 0.2, 'integritaet': 100.0, 'risk': 0.0,
         'drehmoment': 0.0, 'leistung': 0.0, 'vorschubkraft': 0.0, 'abrasion': 0.0, 'drehzahl': 0.0,
         'seed': np.random.RandomState(42)
