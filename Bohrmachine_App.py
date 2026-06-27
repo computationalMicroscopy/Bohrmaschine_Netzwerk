@@ -5,61 +5,99 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 
-# --- 1. SETUP & HIGH-READABILITY STYLING ---
-st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor Pro V3.2", page_icon="⚙️")
+# --- 1. SETUP & HIGH-END INDUSTRIAL STYLING ---
+st.set_page_config(layout="wide", page_title="KI-Zerspanungslabor TwinPro V4.0", page_icon="⚙️")
 
-# Reines CSS/HTML wird jetzt via st.html geladen -> Schützt vor Markdown-Konflikten
 st.html("""
     <style>
-    /* Globaler Präsentations-Darkmode */
-    .stApp { background-color: #0d1117; color: #c9d1d9; }
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;600;800&display=swap');
     
-    /* Extreme Lesbarkeit für Widgets & Regler */
+    /* Globaler Next-Gen Darkmode */
+    .stApp { 
+        background-color: #080b10; 
+        color: #c9d1d9;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Regler & Control-UX */
     label, .stSlider, .stSelectbox, .stToggle { 
-        font-size: 1.35rem !important; 
-        font-weight: 700 !important; 
+        font-size: 1.25rem !important; 
+        font-weight: 600 !important; 
         color: #f0f6fc !important;
     }
-    .stMarkdown p { font-size: 1.25rem !important; line-height: 1.6; }
+    .stMarkdown p { font-size: 1.15rem !important; line-height: 1.6; }
     
     .main-title {
-        font-size: 3.0rem; font-weight: 800; color: #58a6ff;
-        margin-bottom: 25px; text-align: center; border-bottom: 3px solid #30363d; padding-bottom: 15px;
+        font-size: 2.8rem; font-weight: 800; color: #f0f6fc;
+        text-align: center; margin-bottom: 30px; padding-bottom: 20px;
+        border-bottom: 1px solid rgba(240, 246, 252, 0.1);
+        letter-spacing: -0.5px;
+        background: linear-gradient(90deg, #58a6ff, #bc8cff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
+    
+    /* High-Tech Cockpit Cards */
     .glass-card {
-        background: #161b22; border: 2px solid #30363d;
-        border-radius: 14px; padding: 24px; margin-bottom: 12px; text-align: center;
+        background: rgba(22, 27, 34, 0.7); 
+        border: 1px solid rgba(48, 54, 61, 0.8);
+        border-radius: 12px; padding: 20px; margin-bottom: 15px; text-align: center;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        transition: all 0.3s ease;
     }
-    .val-title { font-size: 1.15rem; color: #8b949e; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
-    .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2.5rem; font-weight: 800; color: #f0f6fc; margin-top: 5px; display: block; }
+    .glass-card:hover {
+        border-color: rgba(88, 166, 255, 0.4);
+        box-shadow: 0 4px 25px rgba(88, 166, 255, 0.1);
+    }
+    .val-title { font-size: 1.05rem; color: #8b949e; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; }
+    .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2.3rem; font-weight: 800; color: #f0f6fc; margin-top: 5px; display: block; }
     
     /* XAI Diagnose-Karten */
-    .xai-container { height: 620px; overflow-y: auto; padding-right: 5px; }
+    .xai-container { height: 600px; overflow-y: auto; padding-right: 5px; }
     .xai-card {
-        background: #1f242c; border-left: 7px solid #58a6ff;
-        padding: 20px; border-radius: 10px; margin-bottom: 14px;
+        background: #11151c; border-left: 6px solid #58a6ff;
+        padding: 18px; border-radius: 8px; margin-bottom: 12px;
+        border-top: 1px solid rgba(255,255,255,0.03);
     }
-    .xai-feature-row { display: flex; justify-content: space-between; font-size: 1.2rem; color: #c9d1d9; margin-top: 6px; font-weight: 500;}
-    .xai-bar-bg { background: #21262d; height: 12px; width: 100%; border-radius: 6px; margin-bottom: 8px; }
-    .xai-bar-fill { background: #58a6ff; height: 12px; border-radius: 6px; }
-    .reason-text { color: #f0f6fc; font-size: 1.35rem; margin-top: 6px; font-weight: 700; }
-    .sensor-snapshot { font-size: 1.1rem; color: #8b949e; margin-top: 6px; font-family: monospace; border-bottom: 1px solid #30363d; padding-bottom: 6px;}
-    .action-text { color: #ff7b72; font-weight: bold; font-size: 1.2rem; margin-top: 8px; border-top: 1px solid #30363d; padding-top: 8px; }
-    .diag-badge { background: #388bfd; color: #ffffff; padding: 5px 10px; border-radius: 4px; font-size: 14px; font-weight: 800; }
+    .xai-feature-row { display: flex; justify-content: space-between; font-size: 1.1rem; color: #c9d1d9; margin-top: 6px; font-weight: 500;}
+    .xai-bar-bg { background: #21262d; height: 8px; width: 100%; border-radius: 4px; margin-bottom: 8px; overflow:hidden;}
+    .xai-bar-fill { background: linear-gradient(90deg, #58a6ff, #1f6feb); height: 100%; border-radius: 4px; }
+    .reason-text { color: #f0f6fc; font-size: 1.25rem; margin-top: 6px; font-weight: 700; }
+    .sensor-snapshot { font-size: 1.0rem; color: #8b949e; margin-top: 6px; font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid #30363d; padding-bottom: 6px;}
+    .action-text { color: #ff7b72; font-weight: bold; font-size: 1.15rem; margin-top: 8px; border-top: 1px solid rgba(48, 54, 61, 0.5); padding-top: 8px; }
+    .diag-badge { background: #23426f; color: #58a6ff; border: 1px solid #388bfd; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 800; letter-spacing: 0.5px;}
     
     .emergency-alert {
-        background: #da3633; color: white; padding: 20px; border-radius: 10px; 
-        font-weight: bold; text-align: center; margin-bottom: 25px; font-size: 1.6rem;
+        background: linear-gradient(90deg, #da3633, #8a1f1d); color: white; padding: 20px; border-radius: 10px; 
+        font-weight: 800; text-align: center; margin-bottom: 25px; font-size: 1.5rem;
+        box-shadow: 0 0 30px rgba(218, 54, 51, 0.4);
+        border: 1px solid #f85149;
     }
 
-    /* --- ADVANCED REALISTIC DRILL ANIMATION KEYFRAMES --- */
-    @keyframes twist_effect {
+    /* --- ULTIMATE REALISM ANIMATION KEYFRAMES --- */
+    @keyframes helical_spin {
         0% { background-position: 0px 0px; }
-        100% { background-position: 0px 120px; }
+        100% { background-position: 0px -160px; } /* Zieht die Wendel nach unten weg */
     }
-    @keyframes severe_shake {
-        0% { transform: translate(1.5px, 0.5px) rotate(0.1deg); }
-        100% { transform: translate(-1.5px, -0.5px) rotate(-0.1deg); }
+    @keyframes industrial_shake {
+        0% { transform: translate(0.5px, 0.5px) rotate(0.05deg); }
+        50% { transform: translate(-0.8px, 0.2px) rotate(-0.05deg); }
+        100% { transform: translate(0.4px, -0.6px) rotate(0.03deg); }
+    }
+    @keyframes chip_spray_left {
+        0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+        80% { opacity: 0.8; }
+        100% { transform: translate(-60px, -30px) scale(0.2) rotate(-180deg); opacity: 0; }
+    }
+    @keyframes chip_spray_right {
+        0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+        80% { opacity: 0.8; }
+        100% { transform: translate(60px, -30px) scale(0.2) rotate(180deg); opacity: 0; }
+    }
+    @keyframes smoke_rise {
+        0% { transform: translate(-50%, -10px) scale(0.8); opacity: 0; }
+        50% { opacity: 0.4; }
+        100% { transform: translate(-50%, -50px) scale(2.5); opacity: 0; }
     }
     </style>
 """)
@@ -118,10 +156,10 @@ if 'twin' not in st.session_state:
 s = st.session_state.twin
 
 MATERIALIEN = {
-    "Baustahl (1.0037)": {"kc1.1": 1800, "mc": 0.25, "wear_factor": 0.02, "t_crit": 450}, 
-    "Vergütungsstahl (1.7225)": {"kc1.1": 2100, "mc": 0.24, "wear_factor": 0.05, "t_crit": 550}, 
-    "Titanlegierung (3.7165)": {"kc1.1": 2500, "mc": 0.23, "wear_factor": 0.16, "t_crit": 650},
-    "Edelstahl (1.4301)": {"kc1.1": 2300, "mc": 0.22, "wear_factor": 0.12, "t_crit": 600}
+    "Baustahl (1.0037)": {"kc1.1": 1800, "mc": 0.25, "wear_factor": 0.02, "t_crit": 450, "color": "#4a5568"}, 
+    "Vergütungsstahl (1.7225)": {"kc1.1": 2100, "mc": 0.24, "wear_factor": 0.05, "t_crit": 550, "color": "#2d3748"}, 
+    "Titanlegierung (3.7165)": {"kc1.1": 2500, "mc": 0.23, "wear_factor": 0.16, "t_crit": 650, "color": "#718096"},
+    "Edelstahl (1.4301)": {"kc1.1": 2300, "mc": 0.22, "wear_factor": 0.12, "t_crit": 600, "color": "#a0aec0"}
 }
 
 LABELS = [
@@ -142,7 +180,7 @@ with st.sidebar:
     vc = st.slider("Schnittgeschwindigkeit vc [m/min]", 30, 350, 100)
     f = st.slider("Vorschub pro Umdrehung f [mm/U]", 0.05, 0.60, 0.15)
     d = st.slider("Bohrer-Durchmesser d [mm]", 5.0, 32.0, 12.0)
-    kuehlung = st.toggle("Kühlschmierstoff (KSS) active", value=True)
+    kuehlung = st.toggle("Kühlschmierstoff (KSS) aktiv", value=True)
     
     st.divider()
     st.header("📡 Sensor-Kalibrierung & Skalierung")
@@ -232,100 +270,137 @@ if s['active'] and not s['broken'] and not s['stall']:
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': exp_report, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'p': s['leistung'], 'm': s['drehmoment'], 'f': s['vorschubkraft']})
 
-# --- 6. HIGH-REALISMUS VISUELLES COCKPIT (ST.HTML SCHÜTZT VOR BREAKS) ---
+# --- 6. CRASH DETECTION STATUS INDICATORS ---
 if s['broken']:
     st.html('<div class="emergency-alert">💥 STRUKTURELLER WERKZEUGBRUCH! Schaft durch mechanische Überlast komplett zerstört.</div>')
 if s['stall']:
-    st.html('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme überschreitet maximales Drehmoment der Spindel (7.5 kW).</div>')
+    st.html('<div class="emergency-alert">⚠️ MOTOR-STALL: Leistungsaufnahme übersteigt maximales Drehmoment der Spindel (7.5 kW).</div>')
 
-col_animation, col_metrics = st.columns([1.2, 4])
+col_animation, col_metrics = st.columns([1.3, 4])
 
 with col_animation:
     t_val = s['thermik']
+    
+    # Intelligente Farb-Interpolation für das Glühen der Hauptschneiden
     if t_val < 150:
-        target_color = "#555555"
-        glow_box = "none"
-    elif t_val < 350:
-        factor = (t_val - 150) / 200
-        r = int(85 + (120 - 85) * factor)
-        g = int(85 + (80 - 85) * factor)
-        b = int(85 + (40 - 85) * factor)
-        target_color = f"rgb({r},{g},{b})"
-        glow_box = f"0 0 {int(5 + 10*factor)}px rgba(255, 106, 0, 0.4)"
+        glow_color = "rgba(85,85,85,0)"
+        tip_color = "#555555"
+    elif t_val < 380:
+        factor = (t_val - 150) / 230
+        r = int(85 + (160 - 85) * factor)
+        g = int(85 + (70 - 85) * factor)
+        b = int(85 + (30 - 85) * factor)
+        tip_color = f"rgb({r},{g},{b})"
+        glow_color = f"rgba(255, 100, 0, {0.2 * factor})"
     else:
-        factor = min(1.0, (t_val - 350) / 350)
-        r = int(200 + (55 * factor))
-        g = int(50 * factor)
-        target_color = f"rgb({r}, {g}, 0)"
-        glow_box = f"0 0 {int(15 + 25*factor)}px rgba({r}, {g}, 0, 0.9)"
+        factor = min(1.0, (t_val - 380) / 320)
+        r = int(160 + (95 * factor))
+        g = int(70 * (1.0 - factor))
+        tip_color = f"rgb({r}, {g}, 0)"
+        glow_color = f"rgba({r}, {g}, 0, {0.4 + 0.5 * factor})"
 
-    glow_style = f"background: {target_color}; box-shadow: {glow_box};"
+    # Späne-Generierung & Rauch-Animationen via CSS-Injektion
+    extra_fx = ""
+    if s['active']:
+        extra_fx += f"""
+        <div style="position: absolute; left: 10px; bottom: 35px; width: 6px; height: 4px; background: {m['color']}; border-radius:2px; animation: chip_spray_left 0.15s infinite linear;"></div>
+        <div style="position: absolute; right: 10px; bottom: 35px; width: 5px; height: 3px; background: {m['color']}; border-radius:1px; animation: chip_spray_right 0.12s infinite linear; animation-delay: 0.05s;"></div>
+        """
+        if t_val > 280:
+            extra_fx += f"""
+            <div style="position: absolute; left: 50%; bottom: 35px; width: 14px; height: 14px; background: rgba(255,255,255,0.15); filter: blur(5px); border-radius: 50%; animation: smoke_rise 0.4s infinite linear;"></div>
+            <div style="position: absolute; left: calc(20px + 5px); bottom: 35px; width: 4px; height: 4px; background: #ffaa00; box-shadow:0 0 5px #ff5500; border-radius:50%; animation: chip_spray_left 0.08s infinite linear;"></div>
+            <div style="position: absolute; right: calc(20px + 5px); bottom: 35px; width: 3px; height: 3px; background: #ffdd00; box-shadow:0 0 5px #ff5500; border-radius:50%; animation: chip_spray_right 0.07s infinite linear;"></div>
+            """
 
+    # Dynamische Zuweisung von Drehzahl-Frequenz & Vibrationen
     if s['broken']:
         anim_spin, anim_shake = "none", "none"
-        body_render = """
-        <div style="width: 45px; height: 60px; background: #444; margin-left: 10px; transform: rotate(-20deg); border-bottom: 2px dashed red;"></div>
-        <div style="width: 45px; height: 60px; background: #333; margin-top: 15px; margin-left: -20px; transform: rotate(45deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
+        drill_render = """
+        <div style="width: 45px; height: 60px; background: #3a3a3a; transform: translate(15px, -10px) rotate(-35deg); border-bottom: 2px dashed #ff3333; box-shadow: inset 2px 0 10px rgba(0,0,0,0.5);"></div>
+        <div style="width: 45px; height: 50px; background: #222222; transform: translate(-20px, 15px) rotate(50deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
         """
         status_label = "<span style='color:#ff7b72; font-weight:900;'>CRASH / BRUCH</span>"
     else:
-        spin_duration = f"{max(0.02, 45.0 / (s['drehzahl'] + 1)):.3f}s" if s['active'] else "0s"
-        anim_spin = f"twist_effect {spin_duration} linear infinite" if s['active'] else "none"
-        shake_duration = f"{max(0.01, 0.1 / (s['vibration'] + 0.01)):.3f}s"
-        anim_shake = f"severe_shake {shake_duration} infinite alternate" if s['active'] or s['stall'] else "none"
+        spin_duration = f"{max(0.015, 60.0 / (s['drehzahl'] + 1)):.3f}s" if s['active'] else "0s"
+        anim_spin = f"helical_spin {spin_duration} linear infinite" if s['active'] else "none"
+        shake_duration = f"{max(0.008, 0.08 / (s['vibration'] + 0.01)):.3f}s"
+        anim_shake = f"industrial_shake {shake_duration} infinite linear" if s['active'] or s['stall'] else "none"
         
-        body_render = f"""
-        <div style="animation: {anim_spin}; width: 45px; height: 110px; background: linear-gradient(120deg, #777 20%, #222 35%, #888 50%, #222 65%, #666 80%); background-size: 45px 40px; box-shadow: inset 2px 0 10px rgba(0,0,0,0.5); border-radius: 0 0 2px 2px;"></div>
-        <div style="{glow_style} width: 45px; height: 22px; clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px; transition: all 0.2s;"></div>
+        drill_render = f"""
+        <div style="animation: {anim_spin}; width: 45px; height: 110px; 
+                    background: repeating-linear-gradient(135deg, rgba(0,0,0,0.7) 0px, rgba(0,0,0,0.7) 15px, #444 20px, #777 25px, #444 30px, rgba(0,0,0,0.7) 45px); 
+                    background-size: 100% 50px; box-shadow: inset 3px 0 12px rgba(0,0,0,0.6); border-radius: 0 0 1px 1px; transition: all 0.1s;"></div>
+        <div style="background: linear-gradient(to bottom, #444 0%, {tip_color} 85%); 
+                    box-shadow: 0 6px 15px {glow_color}; width: 45px; height: 20px; 
+                    clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px; transition: background 0.2s;"></div>
         """
         status_label = "<span style='color:#2ea44f; font-weight:900;'>ROTATION LIVE</span>" if s['active'] else "<span style='color:#8b949e;'>STANDBY</span>"
         if s['stall']: status_label = "<span style='color:#e3b341; font-weight:900;'>STALL / BLOCKIERT</span>"
 
-    # Komplett über st.html gekapselt -> verzieht sich niemals im Layout
     st.html(f"""
-        <div class="glass-card" style="padding: 16px; height: 100%; min-height: 250px; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #12161f;">
-            <span class="val-title" style="margin-bottom: 10px; color: #58a6ff;">Spindel-Monitor</span>
-            <div style="width: 75px; height: 40px; background: linear-gradient(to right, #333, #555, #333); border-radius: 6px 6px 0 0; border: 1px solid #444; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"></div>
-            <div style="animation: {anim_shake}; width: 100%; display: flex; flex-direction: column; align-items: center;">
-                {body_render}
+        <div class="glass-card" style="padding: 20px; height: 100%; min-height: 295px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; background: #0f131a; position: relative; overflow: hidden;">
+            <span class="val-title" style="color: #58a6ff; font-size:1.1rem;">Spindel-Visualizer</span>
+            
+            <div style="width: 70px; height: 35px; background: linear-gradient(90deg, #1f242e 0%, #4f5866 50%, #1f242e 100%); border-radius: 4px 4px 0 0; border: 1px solid #30363d; z-shadow: 0 4px 10px rgba(0,0,0,0.4);"></div>
+            
+            <div style="animation: {anim_shake}; display: flex; flex-direction: column; align-items: center; position: relative;">
+                {drill_render}
+                {extra_fx}
             </div>
-            <div style="margin-top: 15px; font-size: 1.15rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.7px; background: #161b22; padding: 4px 12px; border-radius: 6px; border: 1px solid #30363d; text-align:center; min-width:140px;">{status_label}</div>
+            
+            <div style="width: 110%; height: 22px; background: linear-gradient(180deg, {m['color']} 0%, #111 100%); border-top: 2px solid rgba(255,255,255,0.1); border-radius: 4px; z-index: 10; margin-top:-3px; display:flex; justify-content:center;">
+                <div style="width: 14px; height: 6px; background: rgba(0,0,0,0.5); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
+            </div>
+            
+            <div style="margin-top: 12px; font-size: 1.1rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.8px; background: #161b22; padding: 5px 16px; border-radius: 20px; border: 1px solid #30363d; text-align:center; min-width:150px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);">{status_label}</div>
         </div>
     """)
 
+# --- 7. UX-DASHBOARD-KPI PANELS ---
 with col_metrics:
     c0, c1, c2, c3, c4, c5 = st.columns(6)
-    c0.html(f'<div class="glass-card"><span class="val-title">Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>')
-    c1.html(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#2ea44f">{s["integritaet"]:.1f}%</span></div>')
-    c2.html(f'<div class="glass-card"><span class="val-title">Bruchrisiko</span><br><span class="val-main" style="color:#f85149">{s["risk"]:.1%}</span></div>')
-    c3.html(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main" style="color:#ff7b72">{s["thermik"]:.0f}°C</span></div>')
-    c4.html(f'<div class="glass-card"><span class="val-title">Schwingung</span><br><span class="val-main" style="color:#a371f7">{s["vibration"]:.2f} mm/s</span></div>')
-    c5.html(f'<div class="glass-card"><span class="val-title">Drehmoment</span><br><span class="val-main" style="color:#e3b341">{s["drehmoment"]:.1f} Nm</span></div>')
+    c0.html(f'<div class="glass-card"><span class="val-title">Sim-Zyklen</span><br><span class="val-main" style="color:#8b949e">{s["zyklus"]}</span></div>')
+    
+    # Farbliche Anpassung der KPI-Karten basierend auf Degradation
+    i_color = "#2ea44f" if s['integritaet'] > 50 else ("#e3b341" if s['integritaet'] > 20 else "#f85149")
+    c1.html(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:{i_color}">{s["integritaet"]:.1f}%</span></div>')
+    
+    r_color = "#2ea44f" if s['risk'] < 0.3 else ("#e3b341" if s['risk'] < 0.7 else "#f85149")
+    c2.html(f'<div class="glass-card"><span class="val-title">Bruchrisiko</span><br><span class="val-main" style="color:{r_color}">{s["risk"]:.1%}</span></div>')
+    
+    t_color = "#58a6ff" if s['thermik'] < 200 else ("#e3b341" if s['thermik'] < m['t_crit'] else "#f85149")
+    c3.html(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main" style="color:{t_color}">{s["thermik"]:.0f}°C</span></div>')
+    
+    v_color = "#58a6ff" if s['vibration'] < 2.5 else ("#e3b341" if s['vibration'] < 5.5 else "#f85149")
+    c4.html(f'<div class="glass-card"><span class="val-title">Schwingung</span><br><span class="val-main" style="color:{v_color}">{s["vibration"]:.2f} <span style="font-size:14px">mm/s</span></span></div>')
+    
+    c5.html(f'<div class="glass-card"><span class="val-title">Drehmoment</span><br><span class="val-main" style="color:#bc8cff">{s["drehmoment"]:.1f} <span style="font-size:16px">Nm</span></span></div>')
 
-# --- 7. TABS: LIVE TRENDS VS SZENARIEN-LABOR ---
-t1, t2 = st.tabs(["📈 Live-Prozessüberwachung & Oszilloskop", "🔬 Interaktives Was-Wäre-Wenn Szenarien-Labor"])
+# --- 8. TABS: LIVE TRENDS VS SCENARIO LAB ---
+t1, t2 = st.tabs(["📈 Echtzeit-Telemetrie & Oszilloskop", "🔬 Prädiktives Was-Wäre-Wenn Simulationslabor"])
 
 with t1:
-    col_graph, col_log = st.columns([2, 1])
+    col_graph, col_log = st.columns([2.1, 1])
     with col_graph:
         if s['history']:
             df = pd.DataFrame(s['history'])
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.07,
-                                subplot_titles=("Strukturelle Werkzeugintegrität (%)", "Kinetische Lasten: Drehmoment (Nm) & Axialkraft (N)", "Prozessdynamik: Schwingung (mm/s) & Temperatur (°C)"))
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.06,
+                                subplot_titles=("Strukturelle Werkzeugintegrität (%)", "Kinetische Lastprofile: Drehmoment (Nm) & Axialkraft (N)", "Prozessdynamik: Schwingung (mm/s) & Schnitttemperatur (°C)"))
             
             fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', line=dict(color='#2ea44f', width=3)), 1, 1)
-            fig.add_trace(go.Scatter(x=df['z'], y=df['m'], line=dict(color='#e3b341', width=2.5), name="Moment"), 2, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['m'], line=dict(color='#bc8cff', width=2.5), name="Moment"), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['f']/100.0, line=dict(color='#1f6feb', width=2, dash='dash'), name="Axialkraft/100"), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['v'], line=dict(color='#a371f7', width=2.5), name="Vibration"), 3, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['t'], line=dict(color='#ff7b72', width=2.5), name="Temp"), 3, 1)
             
-            fig.update_layout(height=600, template="plotly_dark", showlegend=False, margin=dict(l=10, r=10, t=25, b=10))
+            fig.update_layout(height=580, template="plotly_dark", showlegend=False, margin=dict(l=10, r=10, t=25, b=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Simulation starten, um Telemetriedaten aufzuzeichnen.")
             
     with col_log:
-        st.markdown("### 👁️ KI-Ursachendiagnose (XAI)")
+        st.markdown("### 👁️ Erklärbare KI-Ursachendiagnose (XAI)")
         if s['logs']:
             html_str = '<div class="xai-container">'
             for l in s['logs'][:10]:
@@ -334,17 +409,17 @@ with t1:
                 <div class="xai-card">
                     <div style="display:flex; justify-content:between; align-items:center; margin-bottom:6px;">
                         <span class="diag-badge">{l['info']['diag']}</span>
-                        <span style="font-size:11px; color:#8b949e; margin-left:auto;">{l['zeit']}</span>
+                        <span style="font-size:11px; color:#8b949e; margin-left:auto; font-family:monospace;">{l['zeit']}</span>
                     </div>
                     <div class="reason-text">{l['info']['exp']}</div>
                     <div class="sensor-snapshot">{l['info']['snapshot']}</div>
-                    <div style="margin-top:6px;">{bars}</div>
+                    <div style="margin-top:8px;">{bars}</div>
                     <div class="action-text">{l['info']['act']}</div>
                 </div>"""
             html_str += '</div>'
             st.html(html_str)
 
-# --- 8. WAS-WÄRE-WENN LABOR ---
+# --- 9. WAS-WÄRE-WENN LABOR ---
 with t2:
     st.markdown("### 🧪 Labor-Simulationsraum für hypothetische Grenzbereiche")
     
@@ -410,17 +485,17 @@ with t2:
         lab_risk = np.clip(lab_risk, 0.01, 0.99)
         
         lc1, lc2 = st.columns(2)
-        lc1.html(f'<div class="glass-card"><span class="val-title">Errechnetes Drehmoment</span><br><span class="val-main" style="color:#e3b341">{l_torque:.1f} Nm</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Bruch-Limit: {c_t:.1f} Nm</span></div>')
-        lc2.html(f'<div class="glass-card"><span class="val-title">Errechnete Temperatur</span><br><span class="val-main" style="color:#ff7b72">{l_temp:.0f} °C</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Werkstoff-Erweichungs-Limit: {lm["t_crit"]} °C</span></div>')
+        lc1.html(f'<div class="glass-card"><span class="val-title">Errechnetes Drehmoment</span><br><span class="val-main" style="color:#bc8cff">{l_torque:.1f} Nm</span><br><span style="font-size:11px;color:#8b949e;font-weight:bold;">Bruch-Limit: {c_t:.1f} Nm</span></div>')
+        lc2.html(f'<div class="glass-card"><span class="val-title">Errechnete Temperatur</span><br><span class="val-main" style="color:#ff7b72">{l_temp:.0f} °C</span><br><span style="font-size:11px;color:#8b949e;font-weight:bold;">Werkstoff-Erweichungs-Limit: {lm["t_crit"]} °C</span></div>')
         
         lc3, lc4 = st.columns(2)
-        lc3.html(f'<div class="glass-card"><span class="val-title">Erwartete Spindellast</span><br><span class="val-main" style="color:#58a6ff">{l_power:.2f} kW</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Max. Motorleistung: 7.5 kW</span></div>')
-        lc4.html(f'<div class="glass-card"><span class="val-title">Errechnete Vorschubkraft</span><br><span class="val-main" style="color:#1f6feb">{l_force:.0f} N</span><br><span style="font-size:1.1rem;color:#8b949e;font-weight:bold;">Knick-Limit: {c_f:.0f} N</span></div>')
+        lc3.html(f'<div class="glass-card"><span class="val-title">Erwartete Spindellast</span><br><span class="val-main" style="color:#58a6ff">{l_power:.2f} kW</span><br><span style="font-size:11px;color:#8b949e;font-weight:bold;">Max. Motorleistung: 7.5 kW</span></div>')
+        lc4.html(f'<div class="glass-card"><span class="val-title">Errechnete Vorschubkraft</span><br><span class="val-main" style="color:#1f6feb">{l_force:.0f} N</span><br><span style="font-size:11px;color:#8b949e;font-weight:bold;">Knick-Limit: {c_f:.0f} N</span></div>')
         
         st.html(f"""
-            <div class="glass-card" style="border: 3px solid #58a6ff; margin-top:15px; background: #1f242c;">
-                <span class="val-title" style="font-size:1.35rem;">Präzisiertes KI-Bruchrisiko:</span><br>
-                <span class="val-main" style="color:#ff7b72; font-size:3.4rem; margin-top:8px;">{lab_risk:.1%}</span>
+            <div class="glass-card" style="border: 1px solid #58a6ff; margin-top:15px; background: rgba(88, 166, 255, 0.05); box-shadow: 0 0 20px rgba(88,166,255,0.15);">
+                <span class="val-title" style="font-size:1.15rem; color:#58a6ff;">Präzisiertes KI-Bruchrisiko:</span><br>
+                <span class="val-main" style="color:#ff7b72; font-size:3.2rem; margin-top:5px;">{lab_risk:.1%}</span>
             </div>
         """)
         
@@ -428,12 +503,12 @@ with t2:
         html_bars = ""
         for name, prob in l_evidenz[:4]:
             html_bars += f"""
-            <div class="xai-feature-row" style="margin-top:12px;"><span>{name}</span><span style="font-weight:bold;">{prob:.1f}%</span></div>
-            <div class="xai-bar-bg" style="height:12px;"><div class="xai-bar-fill" style="width:{prob}%; height:12px;"></div></div>
+            <div class="xai-feature-row" style="margin-top:10px;"><span>{name}</span><span style="font-weight:bold; color:#58a6ff;">{prob:.1f}%</span></div>
+            <div class="xai-bar-bg"><div class="xai-bar-fill" style="width:{prob}%;"></div></div>
             """
         st.html(html_bars)
 
-# --- 9. RUNTIME CONTROLS ---
+# --- 10. RUNTIME CONTROLS ---
 st.divider()
 b1, b2 = st.columns(2)
 if b1.button("▶ SIMULATION STARTEN / PAUSIEREN", use_container_width=True):
