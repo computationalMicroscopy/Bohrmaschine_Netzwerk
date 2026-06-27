@@ -84,7 +84,7 @@ def get_expert_diagnostics(top_reason, current_vals, settings, integrity):
     res["snapshot"] = f"M: {current_vals['M']:.1f}Nm | T: {current_vals['T']:.0f}°C | V: {current_vals['V']:.1f}mm/s | F_f: {current_vals['F']:.0f}N"
     return res
 
-# --- 3. INITIALISIERUNG DES STATE-MACHINES ---
+# --- 3. INITIALISIERUNG DES STATE-MACHINES & GLOBAL DATA ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {
         'zyklus': 0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
@@ -101,6 +101,16 @@ MATERIALIEN = {
     "Edelstahl (1.4301)": {"kc1.1": 2300, "mc": 0.22, "wear_factor": 0.12, "t_crit": 600}
 }
 
+# Global verfügbarer Fehlerklassen-Vektor für beide Anwendungslayer
+LABELS = [
+    "Mechanische Torsions-Überlast", 
+    "Thermische Gefüge-Erweichung", 
+    "Regeneratives Rattern (Resonanz)", 
+    "Kühlungs-Abriss (Adhäsion)", 
+    "Axiale Schaft-Knickung", 
+    "Normaler Standzeit-Abrieb"
+]
+
 # --- 4. SIDEBAR CONTROL PANEL ---
 with st.sidebar:
     st.header("⚙️ Prozessstellgrößen")
@@ -110,7 +120,7 @@ with st.sidebar:
     vc = st.slider("vc: Schnittgeschwindigkeit [m/min]", 30, 350, 100)
     f = st.slider("f: Vorschub [mm/U]", 0.05, 0.60, 0.15)
     d = st.slider("d: Werkzeugdurchmesser [mm]", 5.0, 32.0, 12.0)
-    kuehlung = st.toggle("Kühlschmierstoff (KSS) aktiv", value=True)
+    kuehlung = st.toggle("Kühlschmierstoff (KSS) active", value=True)
     
     st.divider()
     st.header("🎛️ Sensor-Rauschen & Gain")
@@ -120,7 +130,7 @@ with st.sidebar:
     schrittweite = st.number_input("Zyklen pro Rechenschritt", 5, 100, 20)
     taktzeit = st.select_slider("Taktung (ms)", options=[500, 200, 100, 0], value=100)
 
-# --- 5. DETILLIERTE PHYSIK- ENGINE ---
+# --- 5. DETILLIERTE PHYSIK-ENGINE ---
 if s['active'] and not s['broken'] and not s['stall']:
     s['zyklus'] += schrittweite
     
@@ -136,10 +146,8 @@ if s['active'] and not s['broken'] and not s['stall']:
     s['vorschubkraft'] = (0.5 * d * f * kc) * 1.3  # N
     s['leistung'] = (s['drehmoment'] * n) / 9550.0  # kW
     
-    # 5.3 Durchmesser-abhängige kritische Belastungsgrenzen (Wichtig für Realismus!)
-    # Maximales Torsionsmoment berechnet sich aus polarem Widerstandsmoment: M_crit ~ d^3
+    # 5.3 Durchmesser-abhängige kritische Belastungsgrenzen
     crit_torque = 0.12 * (d ** 3) 
-    # Kritische Knicklast nach Euler (vereinfacht für Bohrergeometrie): F_crit ~ d^2
     crit_force = 320 * (d ** 2)
     
     # 5.4 Thermodynamik (Reibungsleistung vs Konvektion)
@@ -149,11 +157,10 @@ if s['active'] and not s['broken'] and not s['stall']:
     s['thermik'] += (t_target - s['thermik']) * 0.15 # Thermisches PT1-Glied
     
     # 5.5 Schwingungs-Modell (Regeneratives Rattern gekoppelt an Schnittkraft)
-    # Ratter-Resonanz tritt statistisch bei kritischen vc/d Verhältnissen auf
     chatter_trigger = 1.0 + (s['drehmoment'] * 0.1) if (int(n) % 400 < 60) else 0.2
     s['vibration'] = max(0.1, chatter_trigger + s['seed'].normal(0, 0.1) * noise_level)
     
-    # 5.6 Normalisierungs-Faktoren für die XAI-Engine (0.0 = sicher, >1.0 = Zerstörung)
+    # 5.6 Feature-Normalisierung für die XAI-Engine (0.0 = sicher, >1.0 = Zerstörung)
     norm_torque = s['drehmoment'] / crit_torque
     norm_force = s['vorschubkraft'] / crit_force
     norm_temp = s['thermik'] / m['t_crit']
@@ -161,7 +168,6 @@ if s['active'] and not s['broken'] and not s['stall']:
     kss_loss = 1.0 if not kuehlung else 0.0
     
     # 5.7 Mathematisch fundiertes Bayes/Klassifikator-Netzwerk
-    # Keine magischen Frühtode mehr! Risiko steigt erst, wenn ein Normalwert > 0.85 geht.
     weights = [3.0, 3.5, 2.5, 4.0, 3.0, 1.5]
     scores = np.array([
         norm_torque * weights[0],
@@ -175,19 +181,17 @@ if s['active'] and not s['broken'] and not s['stall']:
     # Softmax zur Verteilung der Verdachtsmomente
     exp_s = np.exp(scores - np.max(scores))
     probabilities = (exp_s / exp_s.sum()) * 100
-    labels = ["Mechanische Torsions-Überlast", "Thermische Gefüge-Erweichung", "Regeneratives Rattern (Resonanz)", "Kühlungs-Abriss (Adhäsion)", "Axiale Schaft-Knickung", "Normaler Standzeit-Abrieb"]
-    evidenz_list = sorted(zip(labels, probabilities), key=lambda x: x[1], reverse=True)
+    evidenz_list = sorted(zip(LABELS, probabilities), key=lambda x: x[1], reverse=True)
     
     # Aggregiertes Bruchrisiko spiegelt den maximalen Stresszustand wider
     max_stress = max([norm_torque, norm_force, norm_temp, norm_vibr])
     if max_stress < 0.75:
-        s['risk'] = max_stress * 0.15 # Immer unter 12% bei sicherem Lauf
+        s['risk'] = max_stress * 0.15 
     else:
-        s['risk'] = 0.15 + (max_stress - 0.75) * 3.4 # Steiler, realistischer Exponent
+        s['risk'] = 0.15 + (max_stress - 0.75) * 3.4 
     s['risk'] = np.clip(s['risk'], 0.01, 0.99)
     
     # 5.8 Degradation (Verschleißfortschritt & Strukturschaden)
-    # Abrasiver Normalverschleiß
     v_factor = (vc / 120.0) ** 1.5
     thermal_accelerator = np.exp(max(0.0, s['thermik'] - m['t_crit']) / 30.0)
     s['abrasion'] += (m['wear_factor'] * v_factor * f * thermal_accelerator) * (schrittweite / 10.0)
@@ -206,7 +210,7 @@ if s['active'] and not s['broken'] and not s['stall']:
         s['stall'] = True
         s['active'] = False
     
-    # Realistisches Brechen bei Totalüberlastung oder weicher Schneide bei extremer Hitze
+    # Realistisches Brechen bei Totalüberlastung
     if s['integritaet'] <= 0.0 or norm_torque > 1.15 or norm_force > 1.2 or (norm_temp > 1.1 and s['drehmoment'] > crit_torque * 0.5):
         s['broken'] = True
         s['active'] = False
@@ -217,7 +221,7 @@ if s['active'] and not s['broken'] and not s['stall']:
     s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': exp_report, 'evidenz': evidenz_list})
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration'], 'p': s['leistung'], 'm': s['drehmoment'], 'f': s['vorschubkraft']})
 
-# --- 6. METRIC DASHBOARD (ALLE FEATURES SICHTBAR) ---
+# --- 6. METRIC DASHBOARD ---
 if s['broken']:
     st.markdown('<div class="emergency-alert">💥 STRUKTURELLER WERKZEUGBRUCH! Schneide abgescheert oder Schaft geknickt.</div>', unsafe_allow_html=True)
 if s['stall']:
@@ -233,7 +237,7 @@ c5.markdown(f'<div class="glass-card"><span class="val-title">Drehmoment</span><
 c6.markdown(f'<div class="glass-card"><span class="val-title">Leistung</span><br><span class="val-main" style="color:#58a6ff">{s["leistung"]:.2f} kW</span></div>', unsafe_allow_html=True)
 
 # --- 7. GRAPHICS & DETAILED XAI ---
-t1, t2 = st.tabs(["📈 Echtzeit-Zustand & Trends", "🔬 Physikalische Merkmals-Evidenz"])
+t1, t2 = st.tabs(["... Echtzeit-Zustand & Trends", "... Physikalische Merkmals-Evidenz"])
 
 with t1:
     col_graph, col_log = st.columns([2, 1])
@@ -255,7 +259,7 @@ with t1:
             st.info("Simulation starten, um Telemetriedaten aufzuzeichnen.")
             
     with col_log:
-        st.markdown("### 👁️ XAI: Ursachen-Diagnose")
+        st.markdown("###  XAI: Ursachen-Diagnose")
         if s['logs']:
             html_str = '<div class="xai-container">'
             for l in s['logs'][:10]:
@@ -275,7 +279,7 @@ with t1:
             st.markdown(html_str, unsafe_allow_html=True)
 
 with t2:
-    st.markdown("### 🧪 Statischer Modell-Stresstest (Laborraum)")
+    st.markdown("###  Statischer Modell-Stresstest (Laborraum)")
     sl1, sl2, sl3 = st.columns(3)
     with sl1:
         st_d = st.slider("Labor-Durchmesser [mm]", 5.0, 32.0, 12.0)
@@ -287,7 +291,7 @@ with t2:
         st_vibr = st.slider("Labor-Vibration [mm/s]", 0.0, 15.0, 1.5)
         st_kss = st.toggle("Labor: KSS ausgefallen", value=False)
         
-    # Validierung im Laborraum
+    # Validierung im Laborraum mit den globalen LABELS
     c_t = 0.12 * (st_d ** 3)
     c_f = 320 * (st_d ** 2)
     l_scores = np.array([
@@ -296,7 +300,7 @@ with t2:
     ])
     l_exp = np.exp(l_scores - np.max(l_scores))
     l_probs = (l_exp / l_exp.sum()) * 100
-    l_evidenz = sorted(zip(labels, l_probs), key=lambda x: x[1], reverse=True)
+    l_evidenz = sorted(zip(LABELS, l_probs), key=lambda x: x[1], reverse=True)
     
     st.markdown(f"""
         <div class="glass-card" style="border: 1px solid #58a6ff; margin-top:15px;">
