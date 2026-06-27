@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 import time
 
 # --- 1. SETUP & HIGH-END INDUSTRIAL STYLING ---
-st.set_page_config(layout="wide", page_title="KI-Zerspanungs-Plattform TwinPro V5.2", page_icon="⚙️")
+st.set_page_config(layout="wide", page_title="Bohrersimulation", page_icon="⚙️")
 
 # --- INITIALISIERUNG & STATE-MACHINE ---
 if 'twin' not in st.session_state:
@@ -170,7 +170,7 @@ st.html(f"""
     </style>
 """)
 
-st.html('<div class="main-title">🚀 Next-Gen KI-Zerspanungslabor & XAI-Plattform</div>')
+st.html('<div class="main-title">Bohrersimulation & XAI-Plattform</div>')
 
 # --- 2. DETERMINISTISCHE REAL-SENSOR KI DIAGNOSE ENGINE ---
 def compute_sensor_diagnostics(current_vals, settings, integrity, kuehlung, m):
