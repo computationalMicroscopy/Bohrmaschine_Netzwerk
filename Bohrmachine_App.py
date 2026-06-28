@@ -477,4 +477,67 @@ with t1:
             for lg in s['logs'][:10]:
                 st.markdown(f"""
                     <div class="xai-card">
-                        <div style="display:flex
+                        <div style="display:flex; justify-content:between; align-items:center;">
+                            <span class="diag-badge">{lg['info']['diag']}</span>
+                            <span style="margin-left:auto; color:#8b949e; font-size:12px;">🕒 {lg['zeit']}</span>
+                        </div>
+                        <div class="reason-text">{lg['info']['exp']}</div>
+                        <div class="sensor-snapshot">{lg['info']['snapshot']}</div>
+                        <div class="action-text">💡 KI-Empfehlung: {lg['info']['act']}</div>
+                        <div style="margin-top:10px; font-size:11px; color:#8b949e; font-weight:bold;">Neuronale Evidenz-Gewichtung:</div>
+                """, unsafe_allow_html=True)
+                for name, score in lg['evidenz'][:3]:
+                    if score > 0:
+                        st.markdown(f"""
+                            <div class="xai-feature-row"><span>{name}</span><span>{score:.1f}%</span></div>
+                            <div class="xai-bar-bg"><div class="xai-bar-fill" style="width: {score}%;"></div></div>
+                        """, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.caption("Warte auf Sensorsignale des digitalen Zwillings...")
+
+with t2:
+    st.markdown("### 🔬 Prädiktive FEM- & Kennfeldanalyse")
+    st.markdown("Dieses Modul nutzt die Live-Geometrie zur prädiktiven Berechnung von Grenzlasten vor dem Zerspanungsbeginn.")
+    
+    cc1, cc2, cc3 = st.columns(3)
+    
+    # Prädiktive Berechnung der Steady-State Parameter für die aktuelle Konfiguration
+    n_est = (vc * 1000) / (np.pi * d) if d > 0 else 0
+    h_est = f / 2.0
+    kc_est = m['kc1.1'] * (h_est ** -m['mc'])
+    m_est = (f * (d**2) * kc_est) / 8000.0 
+    p_frict_est = m_est * (n_est * 2 * np.pi / 60.0)
+    kss_fact_est = 4.5 if kuehlung else 0.85
+    t_steady = 22.0 + ((p_frict_est * 0.20) / kss_fact_est)
+    
+    therm_accel = np.exp(max(0.0, t_steady - m['t_crit']) / 30.0)
+    wear_per_cycle = (m['wear_factor'] * ((vc / 120.0) ** 1.5) * f * therm_accel) * 2.5 
+    cycles_left = int(s['integritaet'] / max(0.001, wear_per_cycle))
+    
+    with cc1:
+        st.metric("Kritische Torsionsgrenze (Schub)", f"{0.12 * (d**3):.2f} Nm", delta="Geometriebasiert")
+    with cc2:
+        st.metric("Kritische axiale Knicklast (Euler)", f"{320 * (d**2):.0f} N")
+    with cc3:
+        st.metric("Vorhersage: Rest-Bohrzyklen", f"~ {cycles_left}", delta=f"-{wear_per_cycle:.2f}% Integrität / Zyklus", delta_color="inverse")
+
+# --- 7. APPLIKATIONS-STEUERUNG & HARDWARE-SCHLEIFE ---
+st.divider()
+b1, b2 = st.columns(2)
+if b1.button("▶ Simulation Start / Pause", use_container_width=True): 
+    s['active'] = not s['active']
+    st.rerun()
+if b2.button("🔄 System-Reset & Neue Schneide einwechseln", use_container_width=True):
+    st.session_state.twin = {
+        'zyklus': 0.0, 'zyklen_anzahl': 0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'stall': False,
+        'thermik': 22.0, 'vibration': 0.2, 'integritaet': 100.0, 'risk': 0.0,
+        'drehmoment': 0.0, 'leistung': 0.0, 'vorschubkraft': 0.0, 'abrasion': 0.0, 'drehzahl': 0.0,
+        'seed': np.random.RandomState(42)
+    }
+    st.rerun()
+
+if s['active']:
+    time.sleep(max(0.01, taktzeit / 1000.0 if taktzeit > 0 else 0.05))
+    st.rerun()
