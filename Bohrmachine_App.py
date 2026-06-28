@@ -371,4 +371,110 @@ with col_animation:
         synchronized_vfx += f"""
         <div style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; animation: vfx_sync_gate {dynamische_animations_dauer}s infinite ease-in-out; pointer-events: none;">
             <div style="position: absolute; left: {int(8*scale_factor)}px; bottom: 35px; width: {max(3, int(6*scale_factor))}px; height: 4px; background: {m['color']}; border-radius:2px; animation: chip_spray_left 0.1s infinite linear;"></div>
-            <div style="position: absolute; right: {
+            <div style="position: absolute; right: {int(8*scale_factor)}px; bottom: 35px; width: {max(2, int(5*scale_factor))}px; height: 3px; background: {m['color']}; border-radius:1px; animation: chip_spray_right 0.09s infinite linear; animation-delay: 0.03s;"></div>
+        """
+        if kuehlung:
+            synchronized_vfx += """
+            <div style="position: absolute; width: 3px; height: 75px; background: rgba(180, 240, 255, 0.7); filter: blur(0.5px); animation: kss_flood_left 0.12s infinite linear; transform-origin: top left;"></div>
+            <div style="position: absolute; width: 3px; height: 75px; background: rgba(180, 240, 255, 0.7); filter: blur(0.5px); animation: kss_flood_right 0.12s infinite linear; transform-origin: top right;"></div>
+            <div style="position: absolute; left: 50%; bottom: 32px; width: 30px; height: 15px; background: rgba(200, 235, 255, 0.15); filter: blur(4px); border-radius: 50%; animation: kss_mist 0.25s infinite ease-out;"></div>
+            """
+        if t_val > 220: synchronized_vfx += '<div style="position: absolute; left: 50%; bottom: 35px; width: 18px; height: 18px; background: rgba(240,240,240,0.15); filter: blur(7px); border-radius: 50%; animation: @keyframes smoke_rise 0.3s infinite linear; transform: translate(-50%, 0);"></div>'
+        if t_val > 420:
+            synchronized_vfx += f"""
+            <div style="position: absolute; left: {int(12*scale_factor)}px; bottom: 35px; width: 3px; height: 3px; background: #ffcc00; box-shadow:0 0 5px #ff3300; border-radius:50%; animation: chip_spray_left 0.05s infinite linear;"></div>
+            <div style="position: absolute; right: {int(12*scale_factor)}px; bottom: 35px; width: 3px; height: 3px; background: #fffa00; box-shadow:0 0 5px #ff3300; border-radius:50%; animation: chip_spray_right 0.05s infinite linear;"></div>
+            """
+        synchronized_vfx += "</div>"
+
+    if s['broken']:
+        anim_spin, anim_shake, anim_feed = "none", "none", "none"
+        drill_render = f"""
+        <div style="width: {drill_width_px}px; height: 60px; background: #2f2f2f; transform: translate(16px, -3px) rotate(-32deg); border-bottom: 4px dashed #ff2222; box-shadow: inset 4px 0 10px rgba(0,0,0,0.7);"></div>
+        <div style="width: {drill_width_px}px; height: 50px; background: #111; transform: translate(-20px, 18px) rotate(60deg); clip-path: polygon(0% 0%, 100% 0%, 50% 100%);"></div>
+        """
+        status_label = "<span style='color:#ff7b72; font-weight:900;'>CRASH / BRUCH</span>"
+    else:
+        spin_duration = f"{max(0.010, 45.0 / (s['drehzahl'] + 1)):.3f}s" if s['active'] else "0s"
+        anim_spin = f"helical_spin {spin_duration} linear infinite" if s['active'] else "none"
+        shake_duration = f"{max(0.005, 0.06 / (s['vibration'] + 0.01)):.3f}s"
+        anim_shake = f"industrial_shake {shake_duration} infinite linear" if s['active'] or s['stall'] else "none"
+        anim_feed = f"tool_feed_optimized {dynamische_animations_dauer}s infinite ease-in-out" if s['active'] else "none"
+        
+        drill_render = f"""
+        <div style="animation: {anim_spin}; width: {drill_width_px}px; height: 115px; 
+                    background: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 20%, rgba(0,0,0,0.4) 70%, rgba(0,0,0,0.7) 100%),
+                                linear-gradient(to right, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%),
+                                repeating-linear-gradient(135deg, #12161b 0px, #12161b 12px, #3a3a3a 16px, #777 22px, #3a3a3a 26px, #12161b 38px); 
+                    background-size: 100% 100%, 100% 100%, 100% 45px; box-shadow: inset 4px 0 10px rgba(0,0,0,0.75);"></div>
+        <div style="background: {tip_color}; box-shadow: {glow_effect}; width: {drill_width_px}px; height: {drill_tip_height_px}px; clip-path: polygon(0% 0%, 100% 0%, 50% 100%); margin-top: -1px;"></div>
+        """
+        status_label = "<span style='color:#2ea44f; font-weight:900;'>ROTATION LIVE</span>" if s['active'] else "<span style='color:#8b949e;'>STANDBY</span>"
+        if s['stall']: status_label = "<span style='color:#e3b341; font-weight:900;'>STALL / BLOCKIERT</span>"
+
+    st.html(f"""
+        <div class="glass-card" style="padding: 20px; height: 100%; min-height: 340px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; background: #07090e; position: relative; overflow: hidden; border: 1px solid #21262d;">
+            <span class="val-title" style="color: #bc8cff; font-size:1.05rem;">Realtime-VFX-Spindel</span>
+            
+            <div style="position: relative; display: flex; flex-direction: column; align-items: center; z-index:4;">
+                <div style="width: {int(76*scale_factor)}px; height: 30px; background: linear-gradient(90deg, #161b22 0%, #485260 50%, #161b22 100%); border-radius: 4px 4px 0 0; border: 1px solid #30363d;"></div>
+                <div style="{led_style} width: {int(66*scale_factor)}px; height: 6px; margin-top: -1px; border-radius: 0 0 2px 2px; transition: all 0.3s;"></div>
+            </div>
+            
+            <div style="animation: {anim_feed}; width: 100%; display: flex; flex-direction: column; align-items: center; z-index:2;">
+                <div style="animation: {anim_shake}; display: flex; flex-direction: column; align-items: center; position: relative;">
+                    {drill_render}
+                    {synchronized_vfx}
+                </div>
+            </div>
+            
+            <div style="width: 115%; height: 26px; background: linear-gradient(180deg, {m['color']} 0%, #080a0f 100%); border-top: 2px solid rgba(255,255,255,0.15); border-radius: 2px; z-index: 3; margin-top:-2px; display:flex; justify-content:center; position: relative;">
+                <div style="position: absolute; top: -3px; width: 22px; height: 5px; background: {surface_glow}; filter: blur(2px); border-radius: 50%; box-shadow: 0 0 8px {surface_glow}; transition: background 0.2s;"></div>
+                <div style="width: 16px; height: 7px; background: rgba(0,0,0,0.7); clip-path: polygon(0% 0%, 100% 0%, 50% 100%); z-index: 5;"></div>
+            </div>
+            
+            <div style="margin-top: 8px; font-size: 1.05rem; text-transform: uppercase; font-weight: bold; letter-spacing: 0.8px; background: #12161f; padding: 4px 16px; border-radius: 20px; border: 1px solid #21262d; text-align:center; min-width:150px;">{status_label}</div>
+        </div>
+    """)
+
+# --- 5. UX-DASHBOARD-KPI PANELS ---
+with col_metrics:
+    c_cyc, c0, c1, c2, c3, c4 = st.columns(6)
+    c_cyc.html(f'<div class="glass-card" style="border: 1px solid #bc8cff; background: rgba(188,140,255,0.03);"><span class="val-title" style="color:#bc8cff;">Bohrzyklen</span><br><span class="val-main" style="color:#bc8cff;">{s["zyklen_anzahl"]}</span></div>')
+    c0.html(f'<div class="glass-card"><span class="val-title">Schnittzeit tc</span><br><span class="val-main" style="color:#58a6ff">{s["zyklus"]:.1f} <span style="font-size:16px">s</span></span></div>')
+    i_color = "#2ea44f" if s['integritaet'] > 50 else ("#e3b341" if s['integritaet'] > 20 else "#f85149")
+    c1.html(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:{i_color}">{s["integritaet"]:.1f}%</span></div>')
+    r_color = "#2ea44f" if s['risk'] < 0.3 else ("#e3b341" if s['risk'] < 0.7 else "#f85149")
+    c2.html(f'<div class="glass-card"><span class="val-title">Bruchrisiko</span><br><span class="val-main" style="color:{r_color}">{s["risk"]:.1%}</span></div>')
+    t_color = "#58a6ff" if s['thermik'] < 200 else ("#e3b341" if s['thermik'] < m['t_crit'] else "#f85149")
+    c3.html(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main" style="color:{t_color}">{s["thermik"]:.0f}°C</span></div>')
+    v_color = "#58a6ff" if s['vibration'] < 2.5 else ("#e3b341" if s['vibration'] < 5.5 else "#f85149")
+    c4.html(f'<div class="glass-card"><span class="val-title">Schwingung</span><br><span class="val-main" style="color:{v_color}">{s["vibration"]:.2f} <span style="font-size:14px">mm/s</span></span></div>')
+
+# --- 6. TABS & TELEMETRIE-OSZILLOSKOP ---
+t1, t2 = st.tabs(["📈 Echtzeit-Telemetrie & Oszilloskop", "🔬 Prädiktives Was-Wäre-Wenn Simulationslabor"])
+
+with t1:
+    col_graph, col_log = st.columns([2.1, 1])
+    with col_graph:
+        if s['history']:
+            df = pd.DataFrame(s['history'])
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.08, subplot_titles=("Strukturelle Werkzeugintegrität (%)", "Kinetische Lastprofile (Nm & N)", "Prozessdynamik (mm/s & °C)"))
+            fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', name="Integrität", line=dict(color='#2ea44f', width=3)), 1, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['m'], name="Drehmoment", line=dict(color='#bc8cff', width=2.5)), 2, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['f'], name="Vorschubkraft", line=dict(color='#1f6feb', width=2, dash='dash')), 2, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['v'], name="Schwingung", line=dict(color='#a371f7', width=2.5)), 3, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['t'], name="Temperatur", line=dict(color='#ff7b72', width=2)), 3, 1)
+            fig.update_layout(template="plotly_dark", height=500, margin=dict(l=20, r=20, t=40, b=20), showlegend=True)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Starten Sie die App über das Bedienpanel unten, um Live-Daten zu akquirieren.")
+
+    with col_log:
+        st.markdown('<span class="val-title">🤖 Explainable AI (XAI) Diagnostic Feed</span>', unsafe_allow_html=True)
+        if s['logs']:
+            st.markdown(f'<div class="xai-container">', unsafe_allow_html=True)
+            for lg in s['logs'][:10]:
+                st.markdown(f"""
+                    <div class="xai-card">
+                        <div style="display:flex
