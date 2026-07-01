@@ -84,7 +84,6 @@ def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kueh
     labels = ["Material-Ermüdung", "Überlastung", "Gefüge-Überhitzung", "Resonanz-Instabilität", "Kühlungs-Defizit", "Struktur-Vorschaden"]
     evidenz = sorted(zip(labels, probabilities), key=lambda x: x[1], reverse=True)
     
-    # Bugfix: Nenner darf nicht 0 oder negativ werden
     divisor = max(0.001, (posterior * 0.45))
     rul = int(max(0, (integritaet - 10) / divisor) * 5.5) if posterior < 0.98 else 0
     return np.clip(posterior, 0.001, 0.999), evidenz, rul
@@ -93,7 +92,12 @@ def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kueh
 if 'twin' not in st.session_state:
     st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0, 'rot_angle': 0.0}
 
-MATERIALIEN = {"Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450}, "Vergütungsstahl": {"kc1.1": 2100, "mc": 0.25, "rate": 0.25, "t_crit": 550}, "Edelstahl": {"kc1.1": 2400, "mc": 0.22, "rate": 0.45, "t_crit": 650}, "Titan Grade 5": {"kc1.1": 2800, "mc": 0.24, "rate": 1.2, "t_crit": 750}}
+MATERIALIEN = {
+    "Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450, "color": "#708090"}, 
+    "Vergütungsstahl": {"kc1.1": 2100, "mc": 0.25, "rate": 0.25, "t_crit": 550, "color": "#4682B4"}, 
+    "Edelstahl": {"kc1.1": 2400, "mc": 0.22, "rate": 0.45, "t_crit": 650, "color": "#DCDCDC"}, 
+    "Titan Grade 5": {"kc1.1": 2800, "mc": 0.24, "rate": 1.2, "t_crit": 750, "color": "#B0C4DE"}
+}
 
 # --- 4. SIDEBAR ---
 with st.sidebar:
@@ -113,8 +117,7 @@ if s['active'] and not s['broken']:
     s['thermik'] += ((22 + (s['verschleiss']*1.4) + (vc*0.22) + (0 if kuehlung else 280)) - s['thermik']) * 0.25
     s['vibration'] = ((s['verschleiss']*0.04 + vc*0.005 + s['drehmoment']*0.02) * sens_vibr) + s['seed'].normal(1.5, 0.3)
     
-    # Rotation basierend auf vc inkrementieren
-    s['rot_angle'] = (s['rot_angle'] + (vc * 0.1)) % (2 * np.pi)
+    s['rot_angle'] = (s['rot_angle'] + (vc * 0.15)) % (2 * np.pi)
     
     s['risk'], evidenz_list, s['rul'] = calculate_metrics_bayesian(s['risk'], s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration'], 1.0 if not kuehlung else 0.0, s['integritaet'])
     s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (max(0,s['vibration'])/25)*0.05) * zyklus_sprung
@@ -125,7 +128,7 @@ if s['active'] and not s['broken']:
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
 
 # --- 6. UI ---
-if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH</div>', unsafe_allow_html=True)
+if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH WÄHREND DES VORSCHUBS</div>', unsafe_allow_html=True)
 
 m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
 m0.markdown(f'<div class="glass-card"><span class="val-title">Vergangene Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
@@ -139,12 +142,12 @@ m6.markdown(f'<div class="glass-card"><span class="val-title">Last (Nm)</span><b
 tab1, tab2 = st.tabs(["📊 LIVE-ANALYSE", "🧪 SZENARIO-LABOR"])
 
 with tab1:
-    col_l, col_m, col_r = st.columns([1.5, 1.2, 1.3])
+    col_l, col_m, col_r = st.columns([1.8, 2.2, 1.8])
     
     with col_l:
         if s['history']:
             df = pd.DataFrame(s['history'])
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Temperatur & Vibration (mm/s)", "KI: Bruchrisiko %"))
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Temperatur & Vibration", "KI: Bruchrisiko %"))
             fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', line=dict(color='#3fb950', width=3)), 1, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['t'], line=dict(color='#f85149')), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['v'], line=dict(color='#bc8cff')), 2, 1)
@@ -153,46 +156,91 @@ with tab1:
             st.plotly_chart(fig, use_container_width=True)
             
     with col_m:
-        st.markdown("### 🌀 Digitale Bohrer-Animation")
-        # Generiere dynamische 3D Geometrie für den Bohrer
-        z_drill = np.linspace(0, 10, 50)
-        theta = np.linspace(0, 4 * np.pi, 50) + s['rot_angle']
+        st.markdown("### ⚙️ Realistische 3D-Bohrerkinematik")
         
-        # Vibrationen lassen den Bohrer vibrieren (Zittern im Raum)
-        vib_factor = max(0, s['vibration']) * 0.02 if s['active'] else 0
-        vib_x = s['seed'].normal(0, vib_factor) if vib_factor > 0 else 0
-        vib_y = s['seed'].normal(0, vib_factor) if vib_factor > 0 else 0
+        # Berechnung Eindringtiefe (Z-Ebene)
+        aktuelle_tiefe = min(4.5, (s['zyklus'] / 300))
+        z_pos_bohrer = 4.0 - aktuelle_tiefe
         
-        # Koordinaten für die Helix-Struktur des Spiralbohrers
-        r_drill = (d / 20)  # Skalierung für die Visualisierung
-        x_drill = r_drill * np.cos(theta) + vib_x
-        y_drill = r_drill * np.sin(theta) + vib_y
+        # Sensorkopplung: Vibrations-Rauschen berechnen
+        vib_amp = max(0, s['vibration']) * 0.015 if s['active'] else 0
+        v_dx = s['seed'].normal(0, vib_amp) if vib_amp > 0 else 0
+        v_dy = s['seed'].normal(0, vib_amp) if vib_amp > 0 else 0
         
-        # Z-Verschiebung simuliert das Eindringen ins Werkstück basierend auf den Zyklen
-        z_offset = max(-5, - (s['zyklus'] / 200) % 6) if not s['broken'] else -2
-        z_drill_animated = z_drill + z_offset
+        # Geometrie-Konstruktion: 3D Spiralbohrer (Surface Mesh)
+        u = np.linspace(0, 2 * np.pi, 24)
+        v = np.linspace(0, 5, 40) # Länge des Spiralteils
+        U, V = np.meshgrid(u, v)
+        
+        # Mathematische Formulierung der echten Bohrernuten (Doppelhelix)
+        r_b = d / 25.0
+        steigung = 2.0
+        helix_winkel = V * steigung + s['rot_angle']
+        
+        # Flankenmodulation für reale Freiflächen-Optik
+        flanke = 0.7 + 0.3 * np.cos(2 * U)
+        
+        X_b = (r_b * flanke) * np.cos(U + helix_winkel) + v_dx
+        Y_b = (r_b * flanke) * np.sin(U + helix_winkel) + v_dy
+        Z_b = V + z_pos_bohrer
+        
+        # Schaft-Zylinder (oberer Teil des Werkzeugs)
+        V_s = np.linspace(5, 8, 10)
+        U_s, V_s = np.meshgrid(u, V_s)
+        X_s = r_b * np.cos(U_s) + v_dx
+        Y_s = r_b * np.sin(U_s) + v_dy
+        Z_s = V_s + z_pos_bohrer
 
-        # Farbe ändert sich je nach Zustand (Normal, Heiß, Defekt)
+        # Werkzeug-Bruch-Animation splittet den Bohrer
         if s['broken']:
-            drill_color = '#f85149'  # Schade / Bruch = Rot
-        elif s['thermik'] > m['t_crit'] * 0.8:
-            drill_color = '#e3b341'  # Heiß = Orange/Gelb
-        else:
-            drill_color = '#58a6ff'  # Normal = Blau
-
-        fig_anim = go.Figure()
-        # Bohrer-Linie (Hauptschneide)
-        fig_anim.add_trace(go.Scatter3d(x=x_drill, y=y_drill, z=z_drill_animated, mode='lines', line=dict(color=drill_color, width=8)))
-        # Werkstück-Oberflächendarstellung (Referenzebene)
-        fig_anim.add_trace(go.Mesh3d(x=[-5, 5, 5, -5], y=[-5, -5, 5, 5], z=[0, 0, 0, 0], color='rgba(100,100,100,0.3)', opacity=0.5))
+            Z_b[Z_b > z_pos_bohrer + 2.5] += 1.5  # Reißt visuell auseinander
+            X_b += s['seed'].uniform(-0.2, 0.2)
+            
+        # Farbmapping berechnen (Thermisches Glühen an der Spitze)
+        temp_norm = min(1.0, s['thermik'] / m['t_crit'])
+        colorscale = [[0, '#708090'], [0.7, '#a0a8b0'], [0.9, '#ff8c00'], [1, '#ff0000']] if not s['broken'] else [[0, '#551a1a'], [1, '#1a1a1a']]
         
+        # Aufbau der 3D-Szene
+        fig_anim = go.Figure()
+        
+        # 1. Der Spiral-Schneidkörper
+        fig_anim.add_trace(go.Surface(x=X_b, y=Y_b, z=Z_b, colorscale=colorscale, surfacecolor=Z_b * (1 - temp_norm * 0.1), showscale=False, lighting=dict(ambient=0.4, diffuse=0.8, roughness=0.2)))
+        # 2. Der feste Einspannschaft
+        fig_anim.add_trace(go.Surface(x=X_s, y=Y_s, z=Z_s, colorscale=[[0, '#4f5d65'], [1, '#708090']], showscale=False, lighting=dict(ambient=0.5)))
+        
+        # 3. DAS MATERIALBLOCK-VOLUMEN (Werkstück) mit adaptivem Bohrloch
+        mx = np.linspace(-3, 3, 20)
+        my = np.linspace(-3, 3, 20)
+        MX, MY = np.meshgrid(mx, my)
+        MZ = np.zeros_like(MX) - 0.2
+        
+        # Loch-Ausschneidung im Mesh basierend auf realem Radius
+        dist_to_center = np.sqrt(MX**2 + MY**2)
+        lochriss = r_b * 1.15
+        MZ[dist_to_center < lochriss] = -aktuelle_tiefe
+        
+        fig_anim.add_trace(go.Surface(x=MX, y=MY, z=MZ, colorscale=[[0, m['color']], [1, '#20252c']], showscale=False, opacity=0.95))
+        
+        # Seitenwände des Materialblocks zur besseren Tiefenwahrnehmung
+        fig_anim.add_trace(go.Mesh3d(x=[-3, 3, 3, -3, -3, 3, 3, -3], y=[-3, -3, 3, 3, -3, -3, 3, 3], z=[-4, -4, -4, -4, -0.2, -0.2, -0.2, -0.2], i=[0, 1, 2, 3, 0, 4, 5, 1], j=[1, 2, 3, 0, 4, 5, 1, 2], k=[4, 5, 6, 7, 1, 5, 2, 6], color=m['color'], opacity=0.4))
+
+        # 4. SPÄNE-EMISSION (Partikelsimulation gekoppelt an Last und vc)
+        if s['active'] and aktuelle_tiefe > 0.2:
+            num_chips = int(min(30, s['drehmoment'] * 0.5))
+            chip_angles = s['seed'].uniform(0, 2*np.pi, num_chips)
+            chip_r = s['seed'].uniform(lochriss, lochriss + 1.2, num_chips)
+            chip_x = chip_r * np.cos(chip_angles)
+            chip_y = chip_r * np.sin(chip_angles)
+            chip_z = s['seed'].uniform(-0.1, 0.4, num_chips)
+            fig_anim.add_trace(go.Scatter3d(x=chip_x, y=chip_y, z=chip_z, mode='markers', marker=dict(size=s['seed'].uniform(3, 7, num_chips), color='#b8860b', symbol='diamond')))
+
         fig_anim.update_layout(
-            height=600, template="plotly_dark",
+            height=650, template="plotly_dark",
             scene=dict(
-                xaxis=dict(range=[-5, 5], backgroundcolor="rgb(10, 15, 20)", title="X (Vib.)"),
-                yaxis=dict(range=[-5, 5], backgroundcolor="rgb(10, 15, 20)", title="Y (Vib.)"),
-                zaxis=dict(range=[-6, 12], backgroundcolor="rgb(5, 7, 10)", title="Z (Tiefe)"),
-                camera=dict(eye=dict(x=1.5, y=1.5, z=1.0))
+                xaxis=dict(range=[-4, 4], visible=True, title="X-Achse"),
+                yaxis=dict(range=[-4, 4], visible=True, title="Y-Achse"),
+                zaxis=dict(range=[-4, 9], visible=True, title="Z-Tiefe"),
+                camera=dict(eye=dict(x=1.3, y=-1.3, z=0.9), up=dict(x=0, y=0, z=1))
             ),
             margin=dict(l=0, r=0, t=0, b=0)
         )
@@ -254,7 +302,6 @@ c1, c2 = st.columns(2)
 if c1.button("▶ START / STOPP", use_container_width=True): s['active'] = not s['active']
 if c2.button("🔄 NEUES WERKZEUG", use_container_width=True):
     st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0, 'rot_angle': 0.0}
-    st.sidebar.empty() # Erzwingt einen sauberen UI-Zustand beim Zurücksetzen
     st.rerun()
 
 if s['active']:
