@@ -43,37 +43,6 @@ st.markdown("""
         background: #f85149; color: white; padding: 15px; border-radius: 8px; 
         font-weight: bold; text-align: center; margin-bottom: 20px;
     }
-
-    /* --- REALISTISCHER ANIMATIONS-CONTAINER (FLACKERFREI) --- */
-    .drill-stage {
-        background: #0d1117; border: 1px solid #30363d; border-radius: 12px;
-        height: 600px; display: flex; flex-direction: column; justify-content: center; align-items: center;
-        overflow: hidden; position: relative; perspective: 1000px;
-    }
-    .material-block {
-        width: 180px; height: 160px; position: absolute; bottom: 80px;
-        border-radius: 6px; box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 10px 25px rgba(0,0,0,0.5);
-        transition: background-color 0.5s ease; z-index: 1;
-    }
-    .bore-hole {
-        position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-        width: 40px; background: #05070a; border-radius: 0 0 50px 50px;
-        box-shadow: inset 0 5px 15px rgba(0,0,0,1); transition: height 0.1s linear;
-    }
-    .drill-assembly {
-        position: absolute; left: 50%; transform-style: preserve-3d;
-        display: flex; flex-direction: column; align-items: center; z-index: 2;
-    }
-    .drill-shank {
-        width: 34px; height: 120px;
-        background: linear-gradient(90deg, #4f5d65 0%, #d1d8dc 50%, #4f5d65 100%);
-        border-radius: 4px 4px 0 0;
-    }
-    .drill-helix {
-        width: 30px; height: 180px;
-        background: repeating-linear-gradient(145deg, #2c3539, #2c3539 15px, #708090 15px, #d1d8dc 30px);
-        border-radius: 0 0 15px 15px; position: relative;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -115,20 +84,14 @@ def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kueh
     labels = ["Material-Ermüdung", "Überlastung", "Gefüge-Überhitzung", "Resonanz-Instabilität", "Kühlungs-Defizit", "Struktur-Vorschaden"]
     evidenz = sorted(zip(labels, probabilities), key=lambda x: x[1], reverse=True)
     
-    divisor = max(0.001, (posterior * 0.45))
-    rul = int(max(0, (integritaet - 10) / divisor) * 5.5) if posterior < 0.98 else 0
+    rul = int(max(0, (integritaet - 10) / max(0.01, (posterior * 0.45))) * 5.5) if posterior < 0.98 else 0
     return np.clip(posterior, 0.001, 0.999), evidenz, rul
 
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
     st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
 
-MATERIALIEN = {
-    "Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450, "color": "linear-gradient(135deg, #5a6975, #3a444a)"}, 
-    "Vergütungsstahl": {"kc1.1": 2100, "mc": 0.25, "rate": 0.25, "t_crit": 550, "color": "linear-gradient(135deg, #3b596d, #243743)"}, 
-    "Edelstahl": {"kc1.1": 2400, "mc": 0.22, "rate": 0.45, "t_crit": 650, "color": "linear-gradient(135deg, #b0b0b0, #7a7a7a)"}, 
-    "Titan Grade 5": {"kc1.1": 2800, "mc": 0.24, "rate": 1.2, "t_crit": 750, "color": "linear-gradient(135deg, #606d7d, #3c444e)"}
-}
+MATERIALIEN = {"Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450}, "Vergütungsstahl": {"kc1.1": 2100, "mc": 0.25, "rate": 0.25, "t_crit": 550}, "Edelstahl": {"kc1.1": 2400, "mc": 0.22, "rate": 0.45, "t_crit": 650}, "Titan Grade 5": {"kc1.1": 2800, "mc": 0.24, "rate": 1.2, "t_crit": 750}}
 
 # --- 4. SIDEBAR ---
 with st.sidebar:
@@ -159,6 +122,7 @@ if s['active'] and not s['broken']:
 # --- 6. UI ---
 if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH</div>', unsafe_allow_html=True)
 
+# Korrektur der Spaltenzuweisung
 m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
 m0.markdown(f'<div class="glass-card"><span class="val-title">Vergangene Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
 m1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
@@ -171,67 +135,17 @@ m6.markdown(f'<div class="glass-card"><span class="val-title">Last (Nm)</span><b
 tab1, tab2 = st.tabs(["📊 LIVE-ANALYSE", "🧪 SZENARIO-LABOR"])
 
 with tab1:
-    col_l, col_m, col_r = st.columns([1.8, 2.2, 1.8])
-    
+    col_l, col_r = st.columns([2.2, 1.8])
     with col_l:
         if s['history']:
             df = pd.DataFrame(s['history'])
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Temperatur & Vibration", "KI: Bruchrisiko %"))
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Temperatur & Vibration (mm/s)", "KI: Bruchrisiko %"))
             fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', line=dict(color='#3fb950', width=3)), 1, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['t'], line=dict(color='#f85149')), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['v'], line=dict(color='#bc8cff')), 2, 1)
             fig.add_trace(go.Scatter(x=df['z'], y=df['r']*100, line=dict(color='#e3b341', width=3)), 3, 1)
-            fig.update_layout(height=650, template="plotly_dark", showlegend=False, margin=dict(l=10, r=10, t=30, b=10))
+            fig.update_layout(height=650, template="plotly_dark", showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
-            
-    with col_m:
-        st.markdown("### 🌀 Hardwarebeschleunigter Digitaler Zwilling")
-        
-        # Echtzeit-Berechnungen für CSS-Steuerung
-        hole_depth = min(150, int((s['zyklus'] / 250) * 12))  # Bohrtiefe bis 150px
-        drill_y_offset = -60 + hole_depth                    # Vorschubbewegung nach unten
-        
-        # Dynamische Rotationsgeschwindigkeit gekoppelt an vc
-        rot_speed = max(0.0, (650 - vc) / 110) if s['active'] else 0
-        anim_rotation = f"animation: spin {rot_speed}s linear infinite;" if rot_speed > 0 else ""
-        
-        # Thermisches Glühen (Spitzen-Farbüberlagerung)
-        temp_ratio = min(1.0, max(0.0, (s['thermik'] - 100) / (m['t_crit'] - 100)))
-        glow_color = f"rgba(248, 81, 73, {temp_ratio * 0.85})"
-        
-        # Vibrations-Amplitude als CSS-Shaking-Intensität
-        v_intensity = min(6, int(max(0, s['vibration']) * 0.4)) if s['active'] else 0
-        anim_shake = f"animation: shake {0.1}s infinite alternate;" if v_intensity > 0 else ""
-
-        # Werkzeug-Zustand steuern (Bruch)
-        broken_css = "transform: translateY(40px) rotate(12deg); opacity: 0.8; filter: grayscale(1) brightness(0.4);" if s['broken'] else ""
-        
-        # Render schlüsselfertiges flackerfreies HTML5/CSS3 Interface
-        st.markdown(f"""
-            <div class="drill-stage">
-                <div class="drill-assembly" style="top: {drill_y_offset}px; transform: translateX(-50%); {anim_shake} {broken_css}">
-                    <div class="drill-shank"></div>
-                    <div class="drill-helix" style="{anim_rotation}">
-                        <div style="position: absolute; bottom: 0; left:0; width: 100%; height: 60px; 
-                                    background: linear-gradient(to top, {glow_color}, transparent); 
-                                    border-radius: 0 0 15px 15px; pointer-events: none;"></div>
-                    </div>
-                </div>
-                
-                <div class="material-block" style="background: {m['color']};">
-                    <div class="bore-hole" style="height: {hole_depth}px;"></div>
-                </div>
-                
-                <style>
-                    @keyframes spin {{ 100% {{ transform: rotate(-360deg); }} }}
-                    @keyframes shake {{
-                        0% {{ margin-left: -{v_intensity}px; margin-top: 0px; }}
-                        100% {{ margin-left: {v_intensity}px; margin-top: {v_intensity//2}px; }}
-                    }}
-                </style>
-            </div>
-        """, unsafe_allow_html=True)
-        
     with col_r:
         st.markdown("### 🧠 Deep XAI: Diagnosezentrum")
         xai_html = '<div class="xai-container">'
@@ -269,6 +183,7 @@ with tab2:
     with sc3:
         r_sim, evidenz_sim, rul_sim = calculate_metrics_bayesian(0.5, sim_alter/800, sim_last/50, sim_temp/500, sim_vibr, 1.0 if sim_kuehl else 0.0, sim_integ)
         
+        # NEU: Anzeige der berechneten RUL im Szenario-Labor
         st.markdown(f"""
             <div class="glass-card" style="text-align: center; border: 2px solid #58a6ff;">
                 <span class="val-title">Voraussichtliche Restzyklen</span><br>
