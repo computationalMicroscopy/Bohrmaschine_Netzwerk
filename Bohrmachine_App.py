@@ -1,396 +1,262 @@
-import tkinter as tk
-from tkinter import ttk
-import math
-import random
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import time
 
-class HighRealismDrillSim:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Künstliche Intelligenz im Maschinenbau - Digitale Bohrer-Simulation v4.0")
-        self.root.geometry("1100x700")
-        self.root.configure(bg="#1E1E24")
-        
-        # --- PHYSIK- & SENSOR-VARIABLEN ---
-        self.is_running = False
-        self.rpm = tk.DoubleVar(value=1200)
-        self.feed_rate = tk.DoubleVar(value=0.5) # mm/s
-        self.tool_wear = tk.DoubleVar(value=10.0) # % Startverschleiß
-        self.material_density = 1.0 # Multiplikator (z.B. Stahl = 1.0, Einschluss = 2.5)
-        
-        # Live-Sensoren
-        self.live_torque = 0.0
-        self.live_temp = 22.0 # Start bei Raumtemperatur
-        self.live_vibration = 0.0
-        self.anomaly_score = 0.0
-        
-        # Animations-Status
-        self.drill_y = 100.0
-        self.rotation_phase = 0.0
-        self.particles = []
-        self.has_inclusion = False
-        
-        # UI Style Setup
-        self.setup_styles()
-        
-        # Layout aufbauen
-        self.create_widgets()
-        
-        # Start des Haupt-Loops
-        self.update_simulation()
+# --- 1. SETUP & STYLING ---
+st.set_page_config(layout="wide", page_title="KI-Labor Bohrertechnik", page_icon="⚙️")
 
-    def setup_styles(self):
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure('TFrame', background='#1E1E24')
-        style.configure('TLabel', background='#1E1E24', foreground='#E0E0E6', font=('Segoe UI', 10))
-        style.configure('Header.TLabel', font=('Segoe UI', 14, 'bold'), foreground='#00FFCC')
-        style.configure('TScale', background='#1E1E24')
-        style.configure('TCheckbutton', background='#1E1E24', foreground='#E0E0E6')
+st.markdown("""
+    <style>
+    .stApp { background-color: #05070a; color: #e1e4e8; }
+    .main-title {
+        font-size: 2.5rem; font-weight: 800; color: #e3b341;
+        margin-bottom: 20px; text-align: center; border-bottom: 2px solid #e3b341; padding-bottom: 10px;
+    }
+    .glass-card {
+        background: rgba(23, 28, 36, 0.7); border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px; padding: 20px; margin-bottom: 15px;
+    }
+    .val-title { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1.2px; }
+    .val-main { font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 800; }
+    
+    .xai-container { height: 650px; overflow-y: auto; padding-right: 10px; }
+    .xai-card {
+        background: rgba(30, 35, 45, 0.9); border-left: 5px solid #e3b341;
+        padding: 15px; border-radius: 8px; margin-bottom: 12px;
+        font-family: 'Segoe UI', sans-serif;
+    }
+    .xai-feature-row { display: flex; justify-content: space-between; font-size: 0.75rem; color: #8b949e; }
+    .xai-bar-bg { background: #1b1f23; height: 6px; width: 100%; border-radius: 3px; margin: 4px 0 8px 0; }
+    .xai-bar-fill { background: linear-gradient(90deg, #e3b341, #f85149); height: 6px; border-radius: 3px; }
+    .reason-text { color: #ffffff; font-size: 0.95rem; margin-top: 10px; font-weight: 600; text-transform: uppercase; }
+    .sensor-snapshot { font-size: 0.75rem; color: #3fb950; margin-top: 5px; font-family: monospace; border-bottom: 1px solid #30363d; padding-bottom: 5px;}
+    .maint-block { margin-top: 10px; padding: 8px; background: rgba(88, 166, 255, 0.05); border-radius: 4px; }
+    .maint-title { font-size: 0.7rem; color: #58a6ff; font-weight: bold; text-transform: uppercase; }
+    .maint-text { color: #c9d1d9; font-size: 0.82rem; line-height: 1.4; margin-bottom: 5px;}
+    .action-text { color: #f85149; font-weight: bold; font-size: 0.85rem; margin-top: 8px; border-top: 1px solid #30363d; padding-top: 8px; }
+    .diag-badge { background: #e3b341; color: #000; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 900; }
+    
+    .emergency-alert {
+        background: #f85149; color: white; padding: 15px; border-radius: 8px; 
+        font-weight: bold; text-align: center; margin-bottom: 20px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    def create_widgets(self):
-        # Hauptcontainer (Gitter-Layout)
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=1) # Controls
-        self.root.grid_columnconfigure(1, weight=2) # Canvas Animation
-        self.root.grid_columnconfigure(2, weight=1) # KI Panel
-        
-        # ==========================================
-        # 1. KONTROLLPANEL (LINKS)
-        # ==========================================
-        ctrl_frame = ttk.Frame(self.root, padding=15, style='TFrame')
-        ctrl_frame.grid(row=0, column=0, sticky="nsew")
-        
-        ttk.Label(ctrl_frame, text="⚙️ MASCHINENPARAMETRE", style='Header.TLabel').pack(anchor="w", pady=10)
-        
-        # Start/Stopp Buttons
-        btn_frame = ttk.Frame(ctrl_frame)
-        btn_frame.pack(fill="x", pady=5)
-        self.start_btn = tk.Button(btn_frame, text="START BOHRUNG", bg="#2ECC71", fg="white", font=('Segoe UI', 10, 'bold'), command=self.start_drill, relief="flat", padx=10, pady=5)
-        self.start_btn.pack(side="left", expand=True, fill="x", padx=2)
-        self.stop_btn = tk.Button(btn_frame, text="NOT-AUS", bg="#E74C3C", fg="white", font=('Segoe UI', 10, 'bold'), command=self.stop_drill, relief="flat", padx=10, pady=5)
-        self.stop_btn.pack(side="right", expand=True, fill="x", padx=2)
-        
-        # Slider für Drehzahl (RPM)
-        ttk.Label(ctrl_frame, text="Soll-Drehzahl (RPM):").pack(anchor="w", pady=(15,2))
-        self.rpm_scale = ttk.Scale(ctrl_frame, from_=0, to=3000, variable=self.rpm, orient="horizontal")
-        self.rpm_scale.pack(fill="x")
-        self.rpm_label = ttk.Label(ctrl_frame, text="1200 U/min")
-        self.rpm_label.pack(anchor="e")
-        
-        # Slider für Vorschubgeschwindigkeit
-        ttk.Label(ctrl_frame, text="Vorschubgeschwindigkeit (mm/s):").pack(anchor="w", pady=(15,2))
-        self.feed_scale = ttk.Scale(ctrl_frame, from_=0.1, to=2.5, variable=self.feed_rate, orient="horizontal")
-        self.feed_scale.pack(fill="x")
-        self.feed_label = ttk.Label(ctrl_frame, text="0.5 mm/s")
-        self.feed_label.pack(anchor="e")
-        
-        ttk.Separator(ctrl_frame, orient="horizontal").pack(fill="x", pady=20)
-        
-        ttk.Label(ctrl_frame, text="⚠️ STÖRUNGS-SIMULATION", style='Header.TLabel').pack(anchor="w", pady=10)
-        
-        # Slider für Werkzeugverschleiß
-        ttk.Label(ctrl_frame, text="Künstlicher Werkzeugverschleiß (%):").pack(anchor="w", pady=(5,2))
-        self.wear_scale = ttk.Scale(ctrl_frame, from_=0, to=100, variable=self.tool_wear, orient="horizontal")
-        self.wear_scale.pack(fill="x")
-        self.wear_label = ttk.Label(ctrl_frame, text="10 %")
-        self.wear_label.pack(anchor="e")
-        
-        # Checkbox für Materialeinschluss (z.B. gehärtete Stelle im Metall)
-        self.incl_var = tk.BooleanVar(value=False)
-        self.incl_cb = ttk.Checkbutton(ctrl_frame, text="Harter Materialeinschluss (Luft/Hartmetall)", variable=self.incl_var, command=self.toggle_inclusion)
-        self.incl_cb.pack(anchor="w", pady=15)
-        
-        # Reset Button
-        tk.Button(ctrl_frame, text="Simulation Zurücksetzen", bg="#34495E", fg="white", font=('Segoe UI', 9), command=self.reset_simulation, relief="flat").pack(fill="x", side="bottom", pady=10)
+st.markdown('<div class="main-title">KI-Labor Bohrertechnik</div>', unsafe_allow_html=True)
 
-        # ==========================================
-        # 2. DIGITAL TWIN CANVAS (MITTE)
-        # ==========================================
-        canvas_frame = ttk.Frame(self.root, padding=10)
-        canvas_frame.grid(row=0, column=1, sticky="nsew")
-        
-        ttk.Label(canvas_frame, text="🖥️ LIVE-ANIMATION (DIGITALER ZWILLING)", style='Header.TLabel').pack(anchor="w", pady=5)
-        
-        self.canvas = tk.Canvas(canvas_frame, bg="#2D2D35", highlightthickness=0)
-        self.canvas.pack(expand=True, fill="both")
-        
-        # ==========================================
-        # 3. KI- & SENSORDASHBOARD (RECHTS)
-        # ==========================================
-        dash_frame = ttk.Frame(self.root, padding=15, style='TFrame')
-        dash_frame.grid(row=0, column=2, sticky="nsew")
-        
-        ttk.Label(dash_frame, text="📊 TELEMETRIE / SENSORIK", style='Header.TLabel').pack(anchor="w", pady=10)
-        
-        # Sensor-Labels & Custom Progressbars für Telemetrie
-        self.lbl_torque = ttk.Label(dash_frame, text="Drehmoment: 0.0 Nm", font=('Segoe UI', 11))
-        self.lbl_torque.pack(anchor="w", pady=5)
-        self.bar_torque = ttk.Progressbar(dash_frame, length=200, mode='determinate')
-        self.bar_torque.pack(fill="x", pady=(0,10))
-        
-        self.lbl_temp = ttk.Label(dash_frame, text="Temperatur: 22.0 °C", font=('Segoe UI', 11))
-        self.lbl_temp.pack(anchor="w", pady=5)
-        self.bar_temp = ttk.Progressbar(dash_frame, length=200, mode='determinate')
-        self.bar_temp.pack(fill="x", pady=(0,10))
-        
-        self.lbl_vib = ttk.Label(dash_frame, text="Vibration (g-Kraft): 0.0g", font=('Segoe UI', 11))
-        self.lbl_vib.pack(anchor="w", pady=5)
-        self.bar_vib = ttk.Progressbar(dash_frame, length=200, mode='determinate')
-        self.bar_vib.pack(fill="x", pady=(0,10))
-        
-        ttk.Separator(dash_frame, orient="horizontal").pack(fill="x", pady=15)
-        
-        ttk.Label(dash_frame, text="🧠 KI-ANOMALIEERKENNUNG", style='Header.TLabel').pack(anchor="w", pady=10)
-        
-        # Anomalie-Score Anzeige
-        self.lbl_anomaly = ttk.Label(dash_frame, text="Anomalie-Score: 0.0%", font=('Segoe UI', 12, 'bold'), foreground="#00FFCC")
-        self.lbl_anomaly.pack(anchor="w", pady=5)
-        self.bar_anomaly = ttk.Progressbar(dash_frame, length=200, mode='determinate')
-        self.bar_anomaly.pack(fill="x", pady=(0,15))
-        
-        # KI Statustext-Box
-        self.ai_status_box = tk.Label(dash_frame, text="SYSTEM BEREIT\nWarte auf Bohrprozess...", font=('Segoe UI', 11, 'bold'), bg="#2D2D35", fg="#8E44AD", h=4, relief="solid", bd=1)
-        self.ai_status_box.pack(fill="x", pady=10)
+# --- 2. DYNAMISCHE DIAGNOSE-ENGINE ---
+def get_dynamic_expert_analysis(top_reason, current_vals, settings, integritaet):
+    vc, f, d, k = settings['vc'], settings['f'], settings['d'], settings['k']
+    integ_impact = "KRITISCH" if integritaet < 50 else ("DEGRADED" if integritaet < 80 else "STABIL")
+    integ_text = f"STATUS: {integritaet:.1f}% ({integ_impact}). "
+    
+    if current_vals['d'] > (d * 10) and integritaet > 80:
+        integ_detail = "GEVALTBRUCH-WARNUNG: Die mechanische Last überschreitet die Biegebruchfestigkeit trotz hoher Integrität."
+    else:
+        integ_detail = "Stabile Risszähigkeit." if integritaet > 50 else "Geringe Risszähigkeit verstärkt Lastrisiko."
 
-    def start_drill(self):
-        if self.rpm.get() > 50:
-            self.is_running = True
+    mapping = {
+        "Material-Ermüdung": {"diag": "DIAGNOSE: ADHÄSIVER VERSCHLEISS", "exp": f"Gefüge-Ermüdung bei vc={vc}. {integ_detail}", "maint": f"Check der Freiflächen. {integ_text}", "act": f"REDUKTION: vc auf {int(vc*0.85)} m/min."},
+        "Überlastung": {"diag": "DIAGNOSE: MECHANISCHE ÜBERLAST", "exp": f"Vorschub f={f} erzeugt {current_vals['d']:.1f}Nm. {integ_detail}", "maint": f"Check Aufnahme. {integ_text}", "act": f"KORREKTUR: f auf {f*0.7:.2f}mm/U begrenzen."},
+        "Gefüge-Überhitzung": {"diag": "DIAGNOSE: THERMISCHE ÜBERLAST", "exp": f"Temperatur ({current_vals['t']:.0f}°C). {integ_detail}", "maint": f"Check auf Kolkverschleiß. {integ_text}", "act": "KÜHLUNG: vc senken oder Druck erhöhen."},
+        "Resonanz-Instabilität": {"diag": "DIAGNOSE: DYNAMISCHE INSTABILITÄT", "exp": f"Vibration {current_vals['v']:.2f}mm/s. {integ_detail}", "maint": f"Auskraglänge prüfen. {integ_text}", "act": f"SHIFT: vc auf {int(vc*0.9)} variieren."},
+        "Kühlungs-Defizit": {"diag": "DIAGNOSE: TRIBOLOGIE-VERSAGEN", "exp": f"Schmierfilmabriss. {integ_detail}", "maint": f"Konzentration prüfen. {integ_text}", "act": "SYSTEMCHECK: Kühlung blockiert."},
+        "Struktur-Vorschaden": {"diag": "DIAGNOSE: GEFÜGESCHADEN", "exp": f"Integrität {integritaet:.1f}%. {integ_detail}", "maint": f"Emissionsprüfung. {integ_text}", "act": "NOT-AUS: Wechsel einleiten."}
+    }
+    res = mapping.get(top_reason, {"diag": "DIAGNOSE: STABIL", "exp": "Parameter OK.", "maint": "Routine.", "act": "Keine Korrektur."})
+    res["snapshot"] = f"IST: {current_vals['t']:.1f}°C | {current_vals['v']:.2f} mm/s | {current_vals['d']:.1f} Nm"
+    return res
 
-    def stop_drill(self):
-        self.is_running = False
+def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kuehlung_ausfall, integritaet):
+    w = [1.2, 2.4, 3.8, 4.2, 4.5, 0.10]
+    raw_scores = np.array([alter * w[0], last * w[1], thermik * w[2], (vibration/10) * w[3], kuehlung_ausfall * w[4], (100 - integritaet) * w[5]])
+    exp_scores = np.exp(raw_scores * 0.8) 
+    probabilities = (exp_scores / exp_scores.sum()) * 100
+    
+    z = sum(raw_scores)
+    likelihood = 1 / (1 + np.exp(-(z - 9.5)))
+    posterior = (likelihood * 0.3) + (prior_risk * 0.7)
+    
+    labels = ["Material-Ermüdung", "Überlastung", "Gefüge-Überhitzung", "Resonanz-Instabilität", "Kühlungs-Defizit", "Struktur-Vorschaden"]
+    evidenz = sorted(zip(labels, probabilities), key=lambda x: x[1], reverse=True)
+    
+    # Bugfix: Nenner darf nicht 0 oder negativ werden
+    divisor = max(0.001, (posterior * 0.45))
+    rul = int(max(0, (integritaet - 10) / divisor) * 5.5) if posterior < 0.98 else 0
+    return np.clip(posterior, 0.001, 0.999), evidenz, rul
 
-    def toggle_inclusion(self):
-        self.has_inclusion = self.incl_var.get()
+# --- 3. INITIALISIERUNG ---
+if 'twin' not in st.session_state:
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0, 'rot_angle': 0.0}
 
-    def reset_simulation(self):
-        self.is_running = False
-        self.drill_y = 100.0
-        self.live_temp = 22.0
-        self.live_torque = 0.0
-        self.live_vibration = 0.0
-        self.anomaly_score = 0.0
-        self.incl_var.set(False)
-        self.has_inclusion = False
-        self.tool_wear.set(10.0)
-        self.rpm.set(1200)
-        self.feed_rate.set(0.5)
-        self.particles = []
-        self.ai_status_box.config(text="SYSTEM BEREIT\nWarte auf Bohrprozess...", bg="#2D2D35", fg="#8E44AD")
+MATERIALIEN = {"Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450}, "Vergütungsstahl": {"kc1.1": 2100, "mc": 0.25, "rate": 0.25, "t_crit": 550}, "Edelstahl": {"kc1.1": 2400, "mc": 0.22, "rate": 0.45, "t_crit": 650}, "Titan Grade 5": {"kc1.1": 2800, "mc": 0.24, "rate": 1.2, "t_crit": 750}}
 
-    # ==========================================
-    # CORE RECHENEINHEIT (PHYSIK & KI MODEL)
-    # ==========================================
-    def update_simulation(self):
-        # Update Text-Labels der Controls
-        self.rpm_label.config(text=f"{int(self.rpm.get())} U/min")
-        self.feed_label.config(text=f"{self.feed_rate.get():.2f} mm/s")
-        self.wear_label.config(text=f"{int(self.tool_wear.get())} %")
+# --- 4. SIDEBAR ---
+with st.sidebar:
+    st.header("⚙️ Konfiguration")
+    mat_name = st.selectbox("Werkstoff", list(MATERIALIEN.keys()))
+    m = MATERIALIEN[mat_name]; vc = st.slider("vc [m/min]", 20, 600, 180); f = st.slider("f [mm/U]", 0.01, 1.2, 0.2); d = st.number_input("Ø [mm]", 1.0, 100.0, 12.0); kuehlung = st.toggle("Kühlung aktiv", value=True)
+    st.divider(); st.header("📡 Sensoren")
+    sens_vibr = st.slider("Vibrations-Gain (mm/s)", 0.1, 5.0, 1.0); sens_load = st.slider("Last-Gain (Nm)", 0.1, 5.0, 1.0)
+    st.divider(); zyklus_sprung = st.number_input("Schrittweite", 1, 100, 10); sim_takt = st.select_slider("Takt (ms)", options=[500, 200, 100, 50, 0], value=100)
+
+# --- 5. PHYSIK-ENGINE ---
+s = st.session_state.twin
+if s['active'] and not s['broken']:
+    s['zyklus'] += zyklus_sprung
+    s['drehmoment'] = ((m['kc1.1'] * (f ** -m['mc']) * f * (d/2)**2) / 1000) * sens_load
+    s['verschleiss'] += ((m['rate'] * (vc**1.7) * f) / (12000 if kuehlung else 300)) * zyklus_sprung
+    s['thermik'] += ((22 + (s['verschleiss']*1.4) + (vc*0.22) + (0 if kuehlung else 280)) - s['thermik']) * 0.25
+    s['vibration'] = ((s['verschleiss']*0.04 + vc*0.005 + s['drehmoment']*0.02) * sens_vibr) + s['seed'].normal(1.5, 0.3)
+    
+    # Rotation basierend auf vc inkrementieren
+    s['rot_angle'] = (s['rot_angle'] + (vc * 0.1)) % (2 * np.pi)
+    
+    s['risk'], evidenz_list, s['rul'] = calculate_metrics_bayesian(s['risk'], s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration'], 1.0 if not kuehlung else 0.0, s['integritaet'])
+    s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (max(0,s['vibration'])/25)*0.05) * zyklus_sprung
+    if s['integritaet'] <= 0: s['broken'], s['active'], s['integritaet'] = True, False, 0
+    
+    expert_info = get_dynamic_expert_analysis(evidenz_list[0][0], {'t': s['thermik'], 'v': s['vibration'], 'd': s['drehmoment']}, {'vc': vc, 'f': f, 'd': d, 'k': kuehlung}, s['integritaet'])
+    s['logs'].insert(0, {'zeit': time.strftime("%H:%M:%S"), 'risk': s['risk'], 'info': expert_info, 'evidenz': evidenz_list})
+    s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
+
+# --- 6. UI ---
+if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH</div>', unsafe_allow_html=True)
+
+m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
+m0.markdown(f'<div class="glass-card"><span class="val-title">Vergangene Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
+m1.markdown(f'<div class="glass-card"><span class="val-title">Integrität</span><br><span class="val-main" style="color:#3fb950">{s["integritaet"]:.1f}%</span></div>', unsafe_allow_html=True)
+m2.markdown(f'<div class="glass-card"><span class="val-title">Bruchrisiko</span><br><span class="val-main" style="color:#e3b341">{s["risk"]:.1%}</span></div>', unsafe_allow_html=True)
+m3.markdown(f'<div class="glass-card"><span class="val-title">Wartung in</span><br><span class="val-main" style="color:#58a6ff">{s["rul"]} Z.</span></div>', unsafe_allow_html=True)
+m4.markdown(f'<div class="glass-card"><span class="val-title">Temperatur</span><br><span class="val-main" style="color:#f85149">{s["thermik"]:.0f}°C</span></div>', unsafe_allow_html=True)
+m5.markdown(f'<div class="glass-card"><span class="val-title">Vibration (mm/s)</span><br><span class="val-main" style="color:#bc8cff">{max(0,s["vibration"]):.1f}</span></div>', unsafe_allow_html=True)
+m6.markdown(f'<div class="glass-card"><span class="val-title">Last (Nm)</span><br><span class="val-main">{s["drehmoment"]:.1f}</span></div>', unsafe_allow_html=True)
+
+tab1, tab2 = st.tabs(["📊 LIVE-ANALYSE", "🧪 SZENARIO-LABOR"])
+
+with tab1:
+    col_l, col_m, col_r = st.columns([1.5, 1.2, 1.3])
+    
+    with col_l:
+        if s['history']:
+            df = pd.DataFrame(s['history'])
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.05, subplot_titles=("Historie: Integrität", "Sensorik: Temperatur & Vibration (mm/s)", "KI: Bruchrisiko %"))
+            fig.add_trace(go.Scatter(x=df['z'], y=df['i'], fill='tozeroy', line=dict(color='#3fb950', width=3)), 1, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['t'], line=dict(color='#f85149')), 2, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['v'], line=dict(color='#bc8cff')), 2, 1)
+            fig.add_trace(go.Scatter(x=df['z'], y=df['r']*100, line=dict(color='#e3b341', width=3)), 3, 1)
+            fig.update_layout(height=650, template="plotly_dark", showlegend=False, margin=dict(l=10, r=10, t=30, b=10))
+            st.plotly_chart(fig, use_container_width=True)
+            
+    with col_m:
+        st.markdown("### 🌀 Digitale Bohrer-Animation")
+        # Generiere dynamische 3D Geometrie für den Bohrer
+        z_drill = np.linspace(0, 10, 50)
+        theta = np.linspace(0, 4 * np.pi, 50) + s['rot_angle']
         
-        # 1. Physikalische Berechnungen, falls Maschine läuft
-        current_rpm = self.rpm.get()
-        current_feed = self.feed_rate.get()
-        current_wear = self.tool_wear.get()
+        # Vibrationen lassen den Bohrer vibrieren (Zittern im Raum)
+        vib_factor = max(0, s['vibration']) * 0.02 if s['active'] else 0
+        vib_x = s['seed'].normal(0, vib_factor) if vib_factor > 0 else 0
+        vib_y = s['seed'].normal(0, vib_factor) if vib_factor > 0 else 0
         
-        # Überprüfung, ob der Bohrer das Werkstück berührt (Werkstück beginnt bei y=280)
-        is_touching_material = (self.drill_y >= 260 and self.drill_y < 530)
+        # Koordinaten für die Helix-Struktur des Spiralbohrers
+        r_drill = (d / 20)  # Skalierung für die Visualisierung
+        x_drill = r_drill * np.cos(theta) + vib_x
+        y_drill = r_drill * np.sin(theta) + vib_y
         
-        if is_touching_material and self.drill_y >= 380 and self.has_inclusion:
-            self.material_density = 2.8 # Plötzlicher extrem harter Materialeinschluss
-        elif is_touching_material:
-            self.material_density = 1.0 # Normaler Baustahl
+        # Z-Verschiebung simuliert das Eindringen ins Werkstück basierend auf den Zyklen
+        z_offset = max(-5, - (s['zyklus'] / 200) % 6) if not s['broken'] else -2
+        z_drill_animated = z_drill + z_offset
+
+        # Farbe ändert sich je nach Zustand (Normal, Heiß, Defekt)
+        if s['broken']:
+            drill_color = '#f85149'  # Schade / Bruch = Rot
+        elif s['thermik'] > m['t_crit'] * 0.8:
+            drill_color = '#e3b341'  # Heiß = Orange/Gelb
         else:
-            self.material_density = 0.0 # Luft (kein Kontakt)
+            drill_color = '#58a6ff'  # Normal = Blau
 
-        if self.is_running and current_rpm > 50:
-            # Vorschub-Bewegung nach unten realisieren
-            self.drill_y += (current_feed * 0.4)
-            if self.drill_y > 530: # Maximale Tiefe erreicht
-                self.drill_y = 530
-                self.is_running = False
-            
-            # Rotationsphase berechnen für visuelle Animation
-            self.rotation_phase += (current_rpm / 600.0)
-            
-            # Realistische Physik-Formeln für die Sensoren
-            if is_touching_material:
-                # Drehmoment steigt mit Vorschub und Materialhärte, sinkt leicht mit zu hoher Drehzahl
-                self.live_torque = (current_feed * 15.0 * self.material_density) + (current_wear * 0.15)
-                # Vibration steigt massiv bei Materialänderung, Abnutzung oder kritischer Drehzahl/Resonanz
-                base_vib = (current_rpm / 1500.0) + (current_feed * 2.0)
-                wear_vib = (current_wear * 0.12)
-                inclusion_vib = 8.5 if self.material_density > 2.0 else 0.0
-                self.live_vibration = base_vib + wear_vib + inclusion_vib + random.uniform(-0.4, 0.4)
-                
-                # Temperatur akkumuliert sich durch Reibung
-                heat_generation = (self.live_torque * current_rpm * 0.00005) + (current_wear * 0.02)
-                self.live_temp += heat_generation - (self.live_temp - 22) * 0.01 # Reibungshitze vs Kühlung
-            else:
-                # Leerlauf
-                self.live_torque = 0.5 + random.uniform(0, 0.2)
-                self.live_vibration = (current_rpm / 2000.0) + random.uniform(0, 0.1)
-                self.live_temp += (current_rpm * 0.001) - (self.live_temp - 22) * 0.02
-        else:
-            # Maschine steht still -> Abkühlung
-            self.live_torque = 0.0
-            self.live_vibration = 0.0
-            self.live_temp -= (self.live_temp - 22) * 0.03
-            if self.live_temp < 22: self.live_temp = 22
-
-        # 2. SIMULIERTE KI-ANOMALIEERKENNUNG (Heuristik basierend auf ML-Logik)
-        # Ein echtes ML-Modell würde Features extrahieren (z.B. RMS der Vibration, Frequenzverschiebungen)
-        if is_touching_material:
-            # Berechne Abweichung vom mathematischen Idealzustand (Neues Werkzeug, perfektes Material)
-            ideal_torque = current_feed * 15.0 * 1.0
-            ideal_vib = (current_rpm / 1500.0) + (current_feed * 2.0)
-            
-            torque_deviation = max(0.0, self.live_torque - ideal_torque)
-            vib_deviation = max(0.0, self.live_vibration - ideal_vib)
-            
-            # Anomalie-Score skaliert hoch
-            self.anomaly_score = (torque_deviation * 2.5) + (vib_deviation * 6.0) + (self.live_temp * 0.15 - 3.3)
-            if self.anomaly_score > 100.0: self.anomaly_score = 100.0
-            if self.anomaly_score < 0.0: self.anomaly_score = random.uniform(0.5, 3.0)
-        else:
-            self.anomaly_score = random.uniform(0.0, 1.5) # Rauschen im Leerlauf
-
-        # KI-Status & Farbe updaten
-        if self.anomaly_score < 25.0:
-            self.ai_status_box.config(text="🟢 STATUS: OPTIMAL\nProzessparameter stabil.\nKeine Anomalien detektiert.", bg="#1E4620", fg="#2ECC71")
-        elif self.anomaly_score < 60.0:
-            self.ai_status_box.config(text="🟡 PRÄDIKTIVE WARTUNG\nErhöhter Verschleiß detektiert.\nWerkzeugtausch nach Schicht planen.", bg="#665215", fg="#F1C40F")
-        elif self.anomaly_score < 85.0:
-            self.ai_status_box.config(text="🟠 WARNUNG: ANOMALIE!\nUnerwartete Dichteänderung im\nMaterial oder kritische Vibration!", bg="#78341A", fg="#E67E22")
-        else:
-            self.ai_status_box.config(text="🔴 NOT-AUS EMPFOHLEN!\nKritischer Zustand! Drohender\nWerkzeugbruch oder Festfressen!", bg="#661C1C", fg="#E74C3C")
-
-        # Telemetrie UI aktualisieren
-        self.update_telemetry_ui()
-
-        # 3. GRAPHISCHE ANIMATION REFRESH
-        self.draw_digital_twin()
-
-        # Rekursiver Loop mit ca. 40 FPS (25ms Intervall)
-        self.root.after(25, self.update_simulation)
-
-    def update_telemetry_ui(self):
-        # Textupdates
-        self.lbl_torque.config(text=f"Drehmoment: {self.live_torque:.1f} Nm")
-        self.lbl_temp.config(text=f"Temperatur: {self.live_temp:.1f} °C")
-        self.lbl_vib.config(text=f"Vibration (g-Kraft): {self.live_vibration:.2f}g")
-        self.lbl_anomaly.config(text=f"Anomalie-Score: {self.anomaly_score:.1f}%")
+        fig_anim = go.Figure()
+        # Bohrer-Linie (Hauptschneide)
+        fig_anim.add_trace(go.Scatter3d(x=x_drill, y=y_drill, z=z_drill_animated, mode='lines', line=dict(color=drill_color, width=8)))
+        # Werkstück-Oberflächendarstellung (Referenzebene)
+        fig_anim.add_trace(go.Mesh3d(x=[-5, 5, 5, -5], y=[-5, -5, 5, 5], z=[0, 0, 0, 0], color='rgba(100,100,100,0.3)', opacity=0.5))
         
-        # Fortschrittsbalken-Skalierung (Schutz vor Überlauf)
-        self.bar_torque['value'] = min(100, (self.live_torque / 60.0) * 100)
-        self.bar_temp['value'] = min(100, (self.live_temp / 180.0) * 100)
-        self.bar_vib['value'] = min(100, (self.live_vibration / 15.0) * 100)
-        self.bar_anomaly['value'] = self.anomaly_score
-
-    # ==========================================
-    # GRAPHISCHE RENDERING ENGINE (CANVAS)
-    # ==========================================
-    def draw_digital_twin(self):
-        self.canvas.delete("all")
-        
-        w = self.canvas.winfo_width()
-        h = self.canvas.winfo_height()
-        if w < 10 or h < 10: return # Fenster noch nicht voll geladen
-        
-        center_x = w // 2
-        
-        # 1. ZEICHNE WERKSTÜCK (MATERIAL)
-        # Normales Material (Grau-Blau)
-        self.canvas.create_rectangle(center_x - 120, 280, center_x + 120, 550, fill="#4A5568", outline="#718096", width=2)
-        
-        # Zeichne den harten Materialeinschluss, falls aktiviert
-        if self.has_inclusion:
-            self.canvas.create_rectangle(center_x - 118, 380, center_x + 118, 440, fill="#2C3E50", outline="#E74C3C", dash=(4,4))
-            self.canvas.create_text(center_x + 190, 410, text="Störstelle\n(Gehärtetes Gefüge)", fill="#E74C3C", font=('Segoe UI', 9, 'bold'))
-            self.canvas.create_line(center_x + 120, 410, center_x + 140, 410, fill="#E74C3C")
-            
-        # Zeichne bereits gebohrtes Loch
-        if self.drill_y > 280:
-            self.canvas.create_rectangle(center_x - 25, 278, center_x + 25, self.drill_y, fill="#1E1E24", outline="")
-            
-        # 2. ZEICHNE SPÄNE / PARTIKELEFFEKT (DYNAMISCH)
-        if self.is_running and self.drill_y >= 275:
-            # Partikel erzeugen basierend auf RPM und Vorschub
-            num_particles = int((self.rpm.get() / 600.0) * (self.feed_rate.get() + 0.5))
-            for _ in range(min(5, num_particles)):
-                px = center_x + random.randint(-25, 25)
-                py = self.drill_y + random.randint(-5, 2)
-                vx = random.uniform(-6, 6)
-                vy = random.uniform(-7, -2)
-                # Farbe ändert sich bei glühendem Bohrer zu Funkenflug!
-                color = "#FF9900" if self.live_temp > 90 else "#A0A0A0"
-                self.particles.append([px, py, vx, vy, 1.0, color]) # x, y, vx, vy, alpha, color
-                
-        # Partikel updaten und zeichnen
-        remaining_particles = []
-        for p in self.particles:
-            p[0] += p[1] # x + vx (Index-Fix: p[1] ist vx) -> p[0] ist x, p[1] ist y, etc.
-            # Fix für saubere Vektorbewegung:
-            p[0] += p[2] # x + vx
-            p[1] += p[3] # y + vy
-            p[3] += 0.5  # Schwerkraft-Effekt auf Späne
-            p[4] -= 0.05 # Alpha-Fadeout
-            if p[4] > 0 and p[1] < 560:
-                remaining_particles.append(p)
-                # Zeichnen
-                self.canvas.create_oval(p[0]-2, p[1]-2, p[0]+2, p[1]+2, fill=p[5], outline="")
-        self.particles = remaining_particles
-
-        # 3. ZEICHNE BOHRERHALTERUNG & SPINDEL
-        holder_y = self.drill_y - 140
-        # Kleine Vibration visuell auf den Bohrer übertragen!
-        vib_offset_x = random.uniform(-self.live_vibration*0.15, self.live_vibration*0.15) if self.is_running else 0
-        
-        # Spindelkopf
-        self.canvas.create_rectangle(center_x - 45 + vib_offset_x, holder_y - 40, center_x + 45 + vib_offset_x, holder_y, fill="#555555", outline="#333333")
-        self.canvas.create_rectangle(center_x - 30 + vib_offset_x, holder_y, center_x + 30 + vib_offset_x, holder_y + 40, fill="#777777", outline="#555555")
-
-        # 4. ZEICHNE REALSITISCHE BOHRERSCHNECKE (MIT ROTATIONS-EFFEKT)
-        drill_top = holder_y + 40
-        drill_bottom = self.drill_y
-        
-        # Bohrer-Schaft Grundkörper
-        # Thermische Farbveränderung (Bohrer fängt bei hoher Temp an zu glühen!)
-        if self.live_temp < 60:
-            drill_color = "#B0B0B5" # Normales Metall
-        elif self.live_temp < 110:
-            drill_color = "#D35400" # Leichtes Glühen (Dunkelorange)
-        else:
-            drill_color = "#E74C3C" # Kritisches Glühen (Hellrot)
-
-        self.canvas.create_rectangle(center_x - 20 + vib_offset_x, drill_top, center_x + 20 + vib_offset_x, drill_bottom, fill=drill_color, outline="#7F8C8D")
-        
-        # Bohrerlippen / Wendel-Nuten animieren, um Rotation plastisch zu zeigen
-        num_flutes = 7
-        segment_h = (drill_bottom - drill_top) / num_flutes
-        for i in range(num_flutes):
-            seg_y_top = drill_top + (i * segment_h)
-            seg_y_bottom = seg_y_top + segment_h
-            
-            # Sinuswelle simuliert die Helix-Rotation
-            shift = math.sin(self.rotation_phase + (i * 1.2)) * 18
-            
-            # Zeichne geschwungene Schneidkanten
-            self.canvas.create_line(center_x + vib_offset_x - 20, seg_y_top, center_x + vib_offset_x + shift, (seg_y_top + seg_y_bottom)/2, center_x + vib_offset_x + 20, seg_y_bottom, fill="#34495E", width=2, smooth=True)
-
-        # Konische Bohrerspitze
-        tip_color = "#FF3300" if self.live_temp > 100 else ("#D35400" if self.live_temp > 60 else "#95A5A6")
-        self.canvas.create_polygon(
-            center_x - 20 + vib_offset_x, drill_bottom,
-            center_x + 20 + vib_offset_x, drill_bottom,
-            center_x + vib_offset_x, drill_bottom + 15,
-            fill=tip_color, outline="#7F8C8D"
+        fig_anim.update_layout(
+            height=600, template="plotly_dark",
+            scene=dict(
+                xaxis=dict(range=[-5, 5], backgroundcolor="rgb(10, 15, 20)", title="X (Vib.)"),
+                yaxis=dict(range=[-5, 5], backgroundcolor="rgb(10, 15, 20)", title="Y (Vib.)"),
+                zaxis=dict(range=[-6, 12], backgroundcolor="rgb(5, 7, 10)", title="Z (Tiefe)"),
+                camera=dict(eye=dict(x=1.5, y=1.5, z=1.0))
+            ),
+            margin=dict(l=0, r=0, t=0, b=0)
         )
+        st.plotly_chart(fig_anim, use_container_width=True)
         
-        # Bemaßungen & Live-Tiefenanzeige daneben rendern
-        depth_mm = max(0.0, (self.drill_y - 260) * 0.5) # Skaliert auf mm
-        self.canvas.create_text(center_x - 150, self.drill_y, text=f"Z-Tiefe: {depth_mm:.2f} mm", fill="#00FFCC", font=('Consolas', 10, 'bold'), anchor="e")
-        self.canvas.create_line(center_x - 140, self.drill_y, center_x - 30 + vib_offset_x, self.drill_y, fill="#00FFCC", dash=(2,2))
+    with col_r:
+        st.markdown("### 🧠 Deep XAI: Diagnosezentrum")
+        xai_html = '<div class="xai-container">'
+        for l in s['logs'][:15]:
+            features = "".join([f'<div class="xai-feature-row"><span>{e[0]}</span><span>{e[1]:.1f}%</span></div><div class="xai-bar-bg"><div class="xai-bar-fill" style="width:{e[1]}%"></div></div>' for e in l['evidenz'][:3]])
+            xai_html += f"""
+            <div class="xai-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span class="diag-badge">{l['info']['diag']}</span>
+                    <b style="font-size:11px; color:#8b949e;">LOG {l['zeit']} | KI-SICHERHEIT: {max([e[1] for e in l['evidenz']]):.1f}%</b>
+                </div>
+                <div class="reason-text">{l['info']['exp']}</div>
+                <div class="sensor-snapshot">{l['info']['snapshot']}</div>
+                <div style="margin-top:10px;">{features}</div>
+                <div class="maint-block">
+                    <div class="maint-title">Prüfprotokoll & Instandhaltung:</div>
+                    <div class="maint-text">{l['info']['maint']}</div>
+                </div>
+                <div class="action-text">HANDLUNGSANWEISUNG: {l['info']['act']}</div>
+            </div>"""
+        xai_html += '</div>'
+        st.markdown(xai_html, unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = HighRealismDrillSim(root)
-    root.mainloop()
+with tab2:
+    st.header("🧪 Was-Wäre-Wenn Labor")
+    sc1, sc2, sc3 = st.columns([1, 1, 2])
+    with sc1:
+        sim_alter = st.slider("Sim. Alter [Zyklen]", 0, 3000, 500)
+        sim_last = st.slider("Sim. Last [Nm]", 0, 300, 40)
+        sim_vibr = st.slider("Sim. Vibration [mm/s]", 0.0, 50.0, 5.0)
+    with sc2:
+        sim_temp = st.slider("Sim. Temp. [°C]", 20, 1200, 150)
+        sim_integ = st.slider("Integrität [%]", 0, 100, 100)
+        sim_kuehl = st.toggle("Sim. Kühlungs-Ausfall")
+    with sc3:
+        r_sim, evidenz_sim, rul_sim = calculate_metrics_bayesian(0.5, sim_alter/800, sim_last/50, sim_temp/500, sim_vibr, 1.0 if sim_kuehl else 0.0, sim_integ)
+        
+        st.markdown(f"""
+            <div class="glass-card" style="text-align: center; border: 2px solid #58a6ff;">
+                <span class="val-title">Voraussichtliche Restzyklen</span><br>
+                <span class="val-main" style="color:#58a6ff">{rul_sim} Zyklen</span>
+                <p style="font-size: 0.8rem; color: #8b949e; margin-top: 10px;">
+                    Berechnet auf Basis von Risiko-Posterior: {r_sim:.1%}
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        fig_radar = go.Figure(data=go.Scatterpolar(r=[sim_alter/30, sim_last/3, sim_temp/12, sim_vibr*2, (100 if sim_kuehl else 0)], theta=['Alter','Last','Hitze','Vibration','Kühlung'], fill='toself', line=dict(color='#e3b341')))
+        fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 100])), showlegend=False, height=300, template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+st.divider()
+c1, c2 = st.columns(2)
+if c1.button("▶ START / STOPP", use_container_width=True): s['active'] = not s['active']
+if c2.button("🔄 NEUES WERKZEUG", use_container_width=True):
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0, 'rot_angle': 0.0}
+    st.sidebar.empty() # Erzwingt einen sauberen UI-Zustand beim Zurücksetzen
+    st.rerun()
+
+if s['active']:
+    time.sleep(sim_takt/1000)
+    st.rerun()
