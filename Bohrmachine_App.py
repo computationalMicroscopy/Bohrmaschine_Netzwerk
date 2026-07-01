@@ -43,6 +43,37 @@ st.markdown("""
         background: #f85149; color: white; padding: 15px; border-radius: 8px; 
         font-weight: bold; text-align: center; margin-bottom: 20px;
     }
+
+    /* --- REALISTISCHER ANIMATIONS-CONTAINER (FLACKERFREI) --- */
+    .drill-stage {
+        background: #0d1117; border: 1px solid #30363d; border-radius: 12px;
+        height: 600px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+        overflow: hidden; position: relative; perspective: 1000px;
+    }
+    .material-block {
+        width: 180px; height: 160px; position: absolute; bottom: 80px;
+        border-radius: 6px; box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 10px 25px rgba(0,0,0,0.5);
+        transition: background-color 0.5s ease; z-index: 1;
+    }
+    .bore-hole {
+        position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+        width: 40px; background: #05070a; border-radius: 0 0 50px 50px;
+        box-shadow: inset 0 5px 15px rgba(0,0,0,1); transition: height 0.1s linear;
+    }
+    .drill-assembly {
+        position: absolute; left: 50%; transform-style: preserve-3d;
+        display: flex; flex-direction: column; align-items: center; z-index: 2;
+    }
+    .drill-shank {
+        width: 34px; height: 120px;
+        background: linear-gradient(90deg, #4f5d65 0%, #d1d8dc 50%, #4f5d65 100%);
+        border-radius: 4px 4px 0 0;
+    }
+    .drill-helix {
+        width: 30px; height: 180px;
+        background: repeating-linear-gradient(145deg, #2c3539, #2c3539 15px, #708090 15px, #d1d8dc 30px);
+        border-radius: 0 0 15px 15px; position: relative;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -90,13 +121,13 @@ def calculate_metrics_bayesian(prior_risk, alter, last, thermik, vibration, kueh
 
 # --- 3. INITIALISIERUNG ---
 if 'twin' not in st.session_state:
-    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0, 'rot_angle': 0.0}
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
 
 MATERIALIEN = {
-    "Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450, "color": "#708090"}, 
-    "Vergütungsstahl": {"kc1.1": 2100, "mc": 0.25, "rate": 0.25, "t_crit": 550, "color": "#4682B4"}, 
-    "Edelstahl": {"kc1.1": 2400, "mc": 0.22, "rate": 0.45, "t_crit": 650, "color": "#DCDCDC"}, 
-    "Titan Grade 5": {"kc1.1": 2800, "mc": 0.24, "rate": 1.2, "t_crit": 750, "color": "#B0C4DE"}
+    "Baustahl": {"kc1.1": 1900, "mc": 0.26, "rate": 0.15, "t_crit": 450, "color": "linear-gradient(135deg, #5a6975, #3a444a)"}, 
+    "Vergütungsstahl": {"kc1.1": 2100, "mc": 0.25, "rate": 0.25, "t_crit": 550, "color": "linear-gradient(135deg, #3b596d, #243743)"}, 
+    "Edelstahl": {"kc1.1": 2400, "mc": 0.22, "rate": 0.45, "t_crit": 650, "color": "linear-gradient(135deg, #b0b0b0, #7a7a7a)"}, 
+    "Titan Grade 5": {"kc1.1": 2800, "mc": 0.24, "rate": 1.2, "t_crit": 750, "color": "linear-gradient(135deg, #606d7d, #3c444e)"}
 }
 
 # --- 4. SIDEBAR ---
@@ -117,8 +148,6 @@ if s['active'] and not s['broken']:
     s['thermik'] += ((22 + (s['verschleiss']*1.4) + (vc*0.22) + (0 if kuehlung else 280)) - s['thermik']) * 0.25
     s['vibration'] = ((s['verschleiss']*0.04 + vc*0.005 + s['drehmoment']*0.02) * sens_vibr) + s['seed'].normal(1.5, 0.3)
     
-    s['rot_angle'] = (s['rot_angle'] + (vc * 0.15)) % (2 * np.pi)
-    
     s['risk'], evidenz_list, s['rul'] = calculate_metrics_bayesian(s['risk'], s['zyklus']/1000, s['drehmoment']/60, s['thermik']/m['t_crit'], s['vibration'], 1.0 if not kuehlung else 0.0, s['integritaet'])
     s['integritaet'] -= ((s['verschleiss']/100)*0.04 + (s['drehmoment']/100)*0.01 + (np.exp(max(0, s['thermik']-m['t_crit'])/45)-1)*2 + (max(0,s['vibration'])/25)*0.05) * zyklus_sprung
     if s['integritaet'] <= 0: s['broken'], s['active'], s['integritaet'] = True, False, 0
@@ -128,7 +157,7 @@ if s['active'] and not s['broken']:
     s['history'].append({'z': s['zyklus'], 'i': s['integritaet'], 'r': s['risk'], 't': s['thermik'], 'v': s['vibration']})
 
 # --- 6. UI ---
-if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH WÄHREND DES VORSCHUBS</div>', unsafe_allow_html=True)
+if s['broken']: st.markdown('<div class="emergency-alert">🚨 SYSTEM-STOPP: WERKZEUGBRUCH</div>', unsafe_allow_html=True)
 
 m0, m1, m2, m3, m4, m5, m6 = st.columns(7)
 m0.markdown(f'<div class="glass-card"><span class="val-title">Vergangene Zyklen</span><br><span class="val-main">{s["zyklus"]}</span></div>', unsafe_allow_html=True)
@@ -156,95 +185,52 @@ with tab1:
             st.plotly_chart(fig, use_container_width=True)
             
     with col_m:
-        st.markdown("### ⚙️ Realistische 3D-Bohrerkinematik")
+        st.markdown("### 🌀 Hardwarebeschleunigter Digitaler Zwilling")
         
-        # Berechnung Eindringtiefe (Z-Ebene)
-        aktuelle_tiefe = min(4.5, (s['zyklus'] / 300))
-        z_pos_bohrer = 4.0 - aktuelle_tiefe
+        # Echtzeit-Berechnungen für CSS-Steuerung
+        hole_depth = min(150, int((s['zyklus'] / 250) * 12))  # Bohrtiefe bis 150px
+        drill_y_offset = -60 + hole_depth                    # Vorschubbewegung nach unten
         
-        # Sensorkopplung: Vibrations-Rauschen berechnen
-        vib_amp = max(0, s['vibration']) * 0.015 if s['active'] else 0
-        v_dx = s['seed'].normal(0, vib_amp) if vib_amp > 0 else 0
-        v_dy = s['seed'].normal(0, vib_amp) if vib_amp > 0 else 0
+        # Dynamische Rotationsgeschwindigkeit gekoppelt an vc
+        rot_speed = max(0.0, (650 - vc) / 110) if s['active'] else 0
+        anim_rotation = f"animation: spin {rot_speed}s linear infinite;" if rot_speed > 0 else ""
         
-        # Geometrie-Konstruktion: 3D Spiralbohrer (Surface Mesh)
-        u = np.linspace(0, 2 * np.pi, 24)
-        v = np.linspace(0, 5, 40) # Länge des Spiralteils
-        U, V = np.meshgrid(u, v)
+        # Thermisches Glühen (Spitzen-Farbüberlagerung)
+        temp_ratio = min(1.0, max(0.0, (s['thermik'] - 100) / (m['t_crit'] - 100)))
+        glow_color = f"rgba(248, 81, 73, {temp_ratio * 0.85})"
         
-        # Mathematische Formulierung der echten Bohrernuten (Doppelhelix)
-        r_b = d / 25.0
-        steigung = 2.0
-        helix_winkel = V * steigung + s['rot_angle']
-        
-        # Flankenmodulation für reale Freiflächen-Optik
-        flanke = 0.7 + 0.3 * np.cos(2 * U)
-        
-        X_b = (r_b * flanke) * np.cos(U + helix_winkel) + v_dx
-        Y_b = (r_b * flanke) * np.sin(U + helix_winkel) + v_dy
-        Z_b = V + z_pos_bohrer
-        
-        # Schaft-Zylinder (oberer Teil des Werkzeugs)
-        V_s = np.linspace(5, 8, 10)
-        U_s, V_s = np.meshgrid(u, V_s)
-        X_s = r_b * np.cos(U_s) + v_dx
-        Y_s = r_b * np.sin(U_s) + v_dy
-        Z_s = V_s + z_pos_bohrer
+        # Vibrations-Amplitude als CSS-Shaking-Intensität
+        v_intensity = min(6, int(max(0, s['vibration']) * 0.4)) if s['active'] else 0
+        anim_shake = f"animation: shake {0.1}s infinite alternate;" if v_intensity > 0 else ""
 
-        # Werkzeug-Bruch-Animation splittet den Bohrer
-        if s['broken']:
-            Z_b[Z_b > z_pos_bohrer + 2.5] += 1.5  # Reißt visuell auseinander
-            X_b += s['seed'].uniform(-0.2, 0.2)
-            
-        # Farbmapping berechnen (Thermisches Glühen an der Spitze)
-        temp_norm = min(1.0, s['thermik'] / m['t_crit'])
-        colorscale = [[0, '#708090'], [0.7, '#a0a8b0'], [0.9, '#ff8c00'], [1, '#ff0000']] if not s['broken'] else [[0, '#551a1a'], [1, '#1a1a1a']]
+        # Werkzeug-Zustand steuern (Bruch)
+        broken_css = "transform: translateY(40px) rotate(12deg); opacity: 0.8; filter: grayscale(1) brightness(0.4);" if s['broken'] else ""
         
-        # Aufbau der 3D-Szene
-        fig_anim = go.Figure()
-        
-        # 1. Der Spiral-Schneidkörper
-        fig_anim.add_trace(go.Surface(x=X_b, y=Y_b, z=Z_b, colorscale=colorscale, surfacecolor=Z_b * (1 - temp_norm * 0.1), showscale=False, lighting=dict(ambient=0.4, diffuse=0.8, roughness=0.2)))
-        # 2. Der feste Einspannschaft
-        fig_anim.add_trace(go.Surface(x=X_s, y=Y_s, z=Z_s, colorscale=[[0, '#4f5d65'], [1, '#708090']], showscale=False, lighting=dict(ambient=0.5)))
-        
-        # 3. DAS MATERIALBLOCK-VOLUMEN (Werkstück) mit adaptivem Bohrloch
-        mx = np.linspace(-3, 3, 20)
-        my = np.linspace(-3, 3, 20)
-        MX, MY = np.meshgrid(mx, my)
-        MZ = np.zeros_like(MX) - 0.2
-        
-        # Loch-Ausschneidung im Mesh basierend auf realem Radius
-        dist_to_center = np.sqrt(MX**2 + MY**2)
-        lochriss = r_b * 1.15
-        MZ[dist_to_center < lochriss] = -aktuelle_tiefe
-        
-        fig_anim.add_trace(go.Surface(x=MX, y=MY, z=MZ, colorscale=[[0, m['color']], [1, '#20252c']], showscale=False, opacity=0.95))
-        
-        # Seitenwände des Materialblocks zur besseren Tiefenwahrnehmung
-        fig_anim.add_trace(go.Mesh3d(x=[-3, 3, 3, -3, -3, 3, 3, -3], y=[-3, -3, 3, 3, -3, -3, 3, 3], z=[-4, -4, -4, -4, -0.2, -0.2, -0.2, -0.2], i=[0, 1, 2, 3, 0, 4, 5, 1], j=[1, 2, 3, 0, 4, 5, 1, 2], k=[4, 5, 6, 7, 1, 5, 2, 6], color=m['color'], opacity=0.4))
-
-        # 4. SPÄNE-EMISSION (Partikelsimulation gekoppelt an Last und vc)
-        if s['active'] and aktuelle_tiefe > 0.2:
-            num_chips = int(min(30, s['drehmoment'] * 0.5))
-            chip_angles = s['seed'].uniform(0, 2*np.pi, num_chips)
-            chip_r = s['seed'].uniform(lochriss, lochriss + 1.2, num_chips)
-            chip_x = chip_r * np.cos(chip_angles)
-            chip_y = chip_r * np.sin(chip_angles)
-            chip_z = s['seed'].uniform(-0.1, 0.4, num_chips)
-            fig_anim.add_trace(go.Scatter3d(x=chip_x, y=chip_y, z=chip_z, mode='markers', marker=dict(size=s['seed'].uniform(3, 7, num_chips), color='#b8860b', symbol='diamond')))
-
-        fig_anim.update_layout(
-            height=650, template="plotly_dark",
-            scene=dict(
-                xaxis=dict(range=[-4, 4], visible=True, title="X-Achse"),
-                yaxis=dict(range=[-4, 4], visible=True, title="Y-Achse"),
-                zaxis=dict(range=[-4, 9], visible=True, title="Z-Tiefe"),
-                camera=dict(eye=dict(x=1.3, y=-1.3, z=0.9), up=dict(x=0, y=0, z=1))
-            ),
-            margin=dict(l=0, r=0, t=0, b=0)
-        )
-        st.plotly_chart(fig_anim, use_container_width=True)
+        # Render schlüsselfertiges flackerfreies HTML5/CSS3 Interface
+        st.markdown(f"""
+            <div class="drill-stage">
+                <div class="drill-assembly" style="top: {drill_y_offset}px; transform: translateX(-50%); {anim_shake} {broken_css}">
+                    <div class="drill-shank"></div>
+                    <div class="drill-helix" style="{anim_rotation}">
+                        <div style="position: absolute; bottom: 0; left:0; width: 100%; height: 60px; 
+                                    background: linear-gradient(to top, {glow_color}, transparent); 
+                                    border-radius: 0 0 15px 15px; pointer-events: none;"></div>
+                    </div>
+                </div>
+                
+                <div class="material-block" style="background: {m['color']};">
+                    <div class="bore-hole" style="height: {hole_depth}px;"></div>
+                </div>
+                
+                <style>
+                    @keyframes spin {{ 100% {{ transform: rotate(-360deg); }} }}
+                    @keyframes shake {{
+                        0% {{ margin-left: -{v_intensity}px; margin-top: 0px; }}
+                        100% {{ margin-left: {v_intensity}px; margin-top: {v_intensity//2}px; }}
+                    }}
+                </style>
+            </div>
+        """, unsafe_allow_html=True)
         
     with col_r:
         st.markdown("### 🧠 Deep XAI: Diagnosezentrum")
@@ -301,7 +287,7 @@ st.divider()
 c1, c2 = st.columns(2)
 if c1.button("▶ START / STOPP", use_container_width=True): s['active'] = not s['active']
 if c2.button("🔄 NEUES WERKZEUG", use_container_width=True):
-    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0, 'rot_angle': 0.0}
+    st.session_state.twin = {'zyklus': 0, 'verschleiss': 0.0, 'history': [], 'logs': [], 'active': False, 'broken': False, 'thermik': 22.0, 'vibration': 0.1, 'risk': 0.01, 'integritaet': 100.0, 'seed': np.random.RandomState(42), 'rul': 800, 'drehmoment': 0.0}
     st.rerun()
 
 if s['active']:
